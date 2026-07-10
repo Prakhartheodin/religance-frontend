@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Religence CRM — User Guide</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.55;
+      color: #1a1a2e;
+      margin: 0;
+      background: #fff;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 22mm 20mm 24mm;
+      page-break-after: always;
+      position: relative;
+    }
+    .page:last-child { page-break-after: auto; }
+    .cover {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      background: linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #2563eb 100%);
+      color: #fff;
+      padding: 30mm 25mm;
+    }
+    .cover h1 {
+      font-size: 32pt;
+      font-weight: 700;
+      margin: 0 0 8mm;
+      letter-spacing: -0.02em;
+    }
+    .cover .subtitle {
+      font-size: 14pt;
+      opacity: 0.9;
+      margin-bottom: 20mm;
+      max-width: 130mm;
+    }
+    .cover .meta {
+      font-size: 10pt;
+      opacity: 0.75;
+      margin-top: auto;
+    }
+    .cover .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 3mm 8mm;
+      border-radius: 4mm;
+      font-size: 9pt;
+      margin-bottom: 6mm;
+    }
+    h2 {
+      font-size: 16pt;
+      color: #1e40af;
+      border-bottom: 2px solid #dbeafe;
+      padding-bottom: 3mm;
+      margin: 0 0 5mm;
+    }
+    h3 {
+      font-size: 11.5pt;
+      color: #1e3a8a;
+      margin: 5mm 0 2mm;
+    }
+    h4 {
+      font-size: 10pt;
+      color: #334155;
+      margin: 4mm 0 2mm;
+    }
+    p { margin: 0 0 3mm; }
+    ul, ol { margin: 0 0 4mm; padding-left: 6mm; }
+    li { margin-bottom: 1.5mm; }
+    .footer {
+      position: absolute;
+      bottom: 12mm;
+      left: 20mm;
+      right: 20mm;
+      font-size: 8pt;
+      color: #64748b;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 2mm;
+      display: flex;
+      justify-content: space-between;
+    }
+    .tip {
+      background: #eff6ff;
+      border-left: 3px solid #2563eb;
+      padding: 3mm 4mm;
+      margin: 4mm 0;
+      font-size: 9.5pt;
+    }
+    .warn {
+      background: #fffbeb;
+      border-left: 3px solid #d97706;
+      padding: 3mm 4mm;
+      margin: 4mm 0;
+      font-size: 9.5pt;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9pt;
+      margin: 3mm 0 5mm;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 2mm 3mm;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f1f5f9; font-weight: 600; }
+    .toc-item {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px dotted #cbd5e1;
+      padding: 2mm 0;
+      font-size: 10pt;
+    }
+    .toc-item span:last-child { color: #64748b; }
+    .stage-flow {
+      font-family: ui-monospace, monospace;
+      font-size: 8.5pt;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      padding: 4mm;
+      margin: 3mm 0;
+      line-height: 1.7;
+    }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+    .kbd {
+      display: inline-block;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 2px;
+      padding: 0 2mm;
+      font-size: 8.5pt;
+      font-family: ui-monospace, monospace;
+    }
+    strong { color: #0f172a; }
+  </style>
+</head>
+<body>
+
+<!-- PAGE 1: COVER -->
+<div class="page cover">
+  <div class="badge">Pharma CRM · User Documentation</div>
+  <h1>Religence CRM</h1>
+  <p class="subtitle">Complete guide to Lead Discovery, pipeline management, email outreach, and reporting for pharmaceutical sales teams.</p>
+  <p class="meta">Version 1.0 · June 2026<br/>For sales reps, business development, and CRM administrators</p>
+</div>
+
+<!-- PAGE 2: TOC -->
+<div class="page">
+  <h2>Table of Contents</h2>
+  <div class="toc-item"><span>1. Introduction</span><span>3</span></div>
+  <div class="toc-item"><span>2. Getting Started &amp; Navigation</span><span>4</span></div>
+  <div class="toc-item"><span>3. Understanding CRM Concepts</span><span>6</span></div>
+  <div class="toc-item"><span>4. Setting Up Master Data</span><span>8</span></div>
+  <div class="toc-item"><span>5. Lead Discovery</span><span>11</span></div>
+  <div class="toc-item"><span>6. Saving Prospects to CRM</span><span>14</span></div>
+  <div class="toc-item"><span>7. Verification Queue</span><span>16</span></div>
+  <div class="toc-item"><span>8. Active Leads Pipeline</span><span>17</span></div>
+  <div class="toc-item"><span>9. Email Templates &amp; Outreach</span><span>20</span></div>
+  <div class="toc-item"><span>10. Inbox &amp; Email Management</span><span>23</span></div>
+  <div class="toc-item"><span>11. Saved Contacts</span><span>25</span></div>
+  <div class="toc-item"><span>12. Reports &amp; Analytics</span><span>26</span></div>
+  <div class="toc-item"><span>13. Daily Workflow &amp; Best Practices</span><span>28</span></div>
+  <div class="toc-item"><span>14. Troubleshooting &amp; Data Notes</span><span>29</span></div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>2</span></div>
+</div>
+
+<!-- PAGE 3: INTRO -->
+<div class="page">
+  <h2>1. Introduction</h2>
+  <p>Religence CRM is a pharmaceutical customer relationship management application designed for API salt and branded medicine outreach. It helps your team discover manufacturers and marketers, qualify prospects, manage an active sales pipeline, send templated emails, track conversations, and measure performance — all from a single dashboard.</p>
+
+  <h3>Who This Guide Is For</h3>
+  <ul>
+    <li><strong>Sales representatives</strong> managing day-to-day lead follow-up and email outreach</li>
+    <li><strong>Business development managers</strong> overseeing pipeline health and team activity</li>
+    <li><strong>CRM administrators</strong> maintaining salts, medicines, and email templates</li>
+  </ul>
+
+  <h3>What You Can Do</h3>
+  <ul>
+    <li>Search for companies by API salt and branded medicine using Lead Discovery</li>
+    <li>Save verified prospects as contacts and active leads</li>
+    <li>Track leads through a structured pipeline from first save to Won/Lost</li>
+    <li>Send personalized emails using merge-field templates</li>
+    <li>Manage inbound and outbound mail in a unified Inbox</li>
+    <li>Review KPIs, pipeline breakdown, and outreach activity in Reports</li>
+    <li>Maintain master lists of salts and medicines under Settings</li>
+  </ul>
+
+  <h3>How This Guide Is Organized</h3>
+  <p>Sections follow the natural workflow: configure master data → discover prospects → save and verify → manage pipeline → communicate → analyze results. Each chapter includes step-by-step instructions, tips for effective use, and notes on how screens connect to each other.</p>
+
+  <div class="tip"><strong>Recommended first-time setup:</strong> Configure Salts Master and Medicine Master (Chapter 4), review default Email Templates (Chapter 9), then run your first Lead Discovery session (Chapter 5).</div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>3</span></div>
+</div>
+
+<!-- PAGE 4: GETTING STARTED -->
+<div class="page">
+  <h2>2. Getting Started &amp; Navigation</h2>
+
+  <h3>2.1 Signing In</h3>
+  <p>Open the application URL in your browser. The login screen is the entry point (<span class="kbd">/</span> route).</p>
+  <ul>
+    <li><strong>Demo login:</strong> Use <span class="kbd">adminnextjs@gmail.com</span> / <span class="kbd">1234567890</span> on the Next.js tab for immediate access.</li>
+    <li>After successful sign-in, you are redirected to <strong>Active Leads</strong> — the default home screen.</li>
+  </ul>
+
+  <h3>2.2 Main Navigation (Sidebar)</h3>
+  <p>The left sidebar organizes all CRM modules under the <strong>CRM</strong> section:</p>
+  <table>
+    <tr><th>Menu Item</th><th>Route</th><th>Purpose</th></tr>
+    <tr><td>Active Leads</td><td>/active-leads</td><td>Pipeline table and lead management (home)</td></tr>
+    <tr><td>Lead Discovery</td><td>/lead-discovery</td><td>Find companies by salt and medicine</td></tr>
+    <tr><td>Inbox</td><td>/inbox</td><td>Email conversations and compose</td></tr>
+    <tr><td>Saved Contact</td><td>/contacts</td><td>Contact directory</td></tr>
+    <tr><td>Reports</td><td>/reports</td><td>Analytics dashboard</td></tr>
+    <tr><td>Settings ▸ Email Templates</td><td>/templates</td><td>Outreach template editor</td></tr>
+    <tr><td>Settings ▸ Salts Master</td><td>/settings/salts</td><td>API salt catalog</td></tr>
+    <tr><td>Settings ▸ Medicine Master</td><td>/settings/medicines</td><td>Branded medicine catalog</td></tr>
+  </table>
+
+  <div class="warn"><strong>Hidden routes:</strong> Verification Queue (<span class="kbd">/verification-queue</span>) and Settings hub (<span class="kbd">/settings</span>) are not in the sidebar but are linked from other screens. Bookmark Verification Queue if your team uses formal lead approval.</div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>4</span></div>
+</div>
+
+<!-- PAGE 5: NAV continued -->
+<div class="page">
+  <h3>2.3 Application Layout</h3>
+  <p>Every CRM screen shares a consistent layout:</p>
+  <ul>
+    <li><strong>Header</strong> — global search, notifications, profile, and theme switcher</li>
+    <li><strong>Sidebar</strong> — primary navigation; collapsible on smaller screens</li>
+    <li><strong>Content area</strong> — module-specific tables, charts, and panels</li>
+  </ul>
+
+  <h3>2.4 Common UI Patterns</h3>
+  <p>Religence reuses familiar patterns across modules. Recognizing them speeds up learning:</p>
+
+  <h4>Split-pane master screens</h4>
+  <p>Salts Master, Medicine Master, and Email Templates use a <strong>library panel</strong> (left) with search and pagination, plus an <strong>editor panel</strong> (right). Select a row to edit; use <strong>New</strong> to create custom entries.</p>
+
+  <h4>Drawers and modals</h4>
+  <p>Lead details, company profiles, and contact records open in <strong>right-side drawers</strong> without leaving the current page. Email sending and save-to-contact actions use <strong>modals</strong> (center overlays).</p>
+
+  <h4>Tables with filters</h4>
+  <p>Active Leads, Contacts, and discovery panels support search, dropdown filters, pagination, and row click to drill down.</p>
+
+  <h4>Status badges</h4>
+  <p>Pipeline stages, lead scores, dosage forms, and template categories appear as color-coded badges for quick scanning.</p>
+
+  <div class="tip">Use the theme switcher in the header for light or dark mode. Note: clearing all browser storage via the theme switcher can also erase CRM data — see Chapter 14.</div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>5</span></div>
+</div>
+
+<!-- PAGE 6: CONCEPTS -->
+<div class="page">
+  <h2>3. Understanding CRM Concepts</h2>
+
+  <h3>3.1 Core Entities</h3>
+  <table>
+    <tr><th>Entity</th><th>Description</th></tr>
+    <tr><td><strong>Company</strong></td><td>A manufacturer, marketer, or exporter saved from discovery (name, location, certification, website)</td></tr>
+    <tr><td><strong>Contact</strong></td><td>A person at a company (name, role, email, phone) linked to one company</td></tr>
+    <tr><td><strong>Lead</strong></td><td>An active sales opportunity with stage, score, assignee, follow-up date, and product match</td></tr>
+    <tr><td><strong>Deal</strong></td><td>A commercial opportunity record created when a lead reaches Won or via Close Deal</td></tr>
+    <tr><td><strong>Email</strong></td><td>Inbound or outbound message, optionally linked to a lead</td></tr>
+    <tr><td><strong>Timeline event</strong></td><td>Audit entry for stage changes, emails, notes, verification, and deals</td></tr>
+  </table>
+
+  <h3>3.2 Salts, Medicines, and Leads</h3>
+  <p>The product hierarchy drives discovery and lead matching:</p>
+  <ul>
+    <li><strong>Salt (API)</strong> — active pharmaceutical ingredient, e.g. Budesonide</li>
+    <li><strong>Medicine</strong> — branded product linked to one salt, e.g. Budecort Respules (Respules)</li>
+    <li><strong>Lead product match</strong> — each lead stores matched salt name, medicine name, and dosage form</li>
+  </ul>
+  <p>In Lead Discovery, you select salts → medicines appear → companies matching the active medicine are shown. When saved, this product context flows into the lead record and email templates.</p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>6</span></div>
+</div>
+
+<!-- PAGE 7: STAGES -->
+<div class="page">
+  <h3>3.3 Lead Pipeline Stages</h3>
+  <p>Every lead progresses through defined stages. Understanding stage order is essential for effective pipeline management.</p>
+
+  <div class="stage-flow">
+    Saved → Verified → Intro Email Sent → Follow-up Sent → Replied →
+    Sample Requested → Quotation Sent → Negotiation → Won / Lost / Dormant
+  </div>
+
+  <table>
+    <tr><th>Stage</th><th>Meaning</th><th>Typical Next Action</th></tr>
+    <tr><td>Saved</td><td>New from discovery; not yet approved</td><td>Verify in queue or drawer</td></tr>
+    <tr><td>Verified</td><td>Approved for outreach</td><td>Send intro email</td></tr>
+    <tr><td>Intro Email Sent</td><td>First outreach delivered</td><td>Wait or send follow-up</td></tr>
+    <tr><td>Follow-up Sent</td><td>Second touch sent</td><td>Monitor inbox for reply</td></tr>
+    <tr><td>Replied</td><td>Prospect responded</td><td>Qualify interest; request sample</td></tr>
+    <tr><td>Sample Requested</td><td>Sample stage active</td><td>Prepare quotation</td></tr>
+    <tr><td>Quotation Sent</td><td>Commercial offer shared</td><td>Negotiate terms</td></tr>
+    <tr><td>Negotiation</td><td>Active deal discussion</td><td>Close deal</td></tr>
+    <tr><td>Won / Lost / Dormant</td><td>Terminal states</td><td>Archive or re-engage later</td></tr>
+  </table>
+
+  <div class="tip"><strong>Automatic stage updates:</strong> Sending email from Active Leads advances the stage (e.g. Verified → Intro Email Sent). Linking an inbound reply in Inbox can move Intro/Follow-up stages to Replied.</div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>7</span></div>
+</div>
+
+<!-- PAGE 8: MASTER DATA -->
+<div class="page">
+  <h2>4. Setting Up Master Data</h2>
+  <p>Before heavy prospecting, review your Salts Master and Medicine Master. These catalogs power Lead Discovery filtering and appear on lead records throughout the CRM.</p>
+
+  <h3>4.1 Salts Master (<span class="kbd">/settings/salts</span>)</h3>
+  <p><strong>Layout:</strong> Paginated table (left) + editor (right)</p>
+
+  <h4>Table columns</h4>
+  <ul>
+    <li><strong>#</strong> — row number</li>
+    <li><strong>Salt name</strong> — API name (click row to select)</li>
+    <li><strong>Meds</strong> — count of linked medicines</li>
+    <li><strong>Type</strong> — Built-in (default 18 salts) or Custom</li>
+  </ul>
+
+  <h4>Actions</h4>
+  <ul>
+    <li><strong>Search</strong> — filter salts by name</li>
+    <li><strong>New salt</strong> — add a custom salt (opens in editor as "Untitled salt")</li>
+    <li><strong>Save changes</strong> — persist name edits (updates matched salt on linked leads)</li>
+    <li><strong>Reset</strong> — restore built-in salt to default name</li>
+    <li><strong>Delete</strong> — remove custom salt (only if no medicines or leads reference it)</li>
+    <li><strong>Reset all</strong> — restore entire default salt list</li>
+    <li><strong>Lead Discovery</strong> — jump to discovery with current catalog</li>
+  </ul>
+  <div class="footer"><span>Religence CRM User Guide</span><span>8</span></div>
+</div>
+
+<!-- PAGE 9: MEDICINES MASTER -->
+<div class="page">
+  <h3>4.2 Medicine Master (<span class="kbd">/settings/medicines</span>)</h3>
+  <p>Medicines are branded products mapped to a salt. Each medicine has a name, linked salt, and dosage form.</p>
+
+  <h4>Table columns</h4>
+  <ul>
+    <li><strong>Medicine</strong> — branded product name</li>
+    <li><strong>Salt</strong> — parent API (shown on wider screens)</li>
+    <li><strong>Form</strong> — dosage form badge (Tablet, Respules, Inhaler, etc.)</li>
+    <li><strong>Type</strong> — Built-in or Custom</li>
+  </ul>
+
+  <h4>Editor fields</h4>
+  <ul>
+    <li><strong>Medicine name</strong> — e.g. Budecort Respules</li>
+    <li><strong>Linked salt</strong> — dropdown of all salts in Salts Master</li>
+    <li><strong>Dosage form</strong> — Tablet, Capsule, Syrup, Injection, Inhaler, Respules, Cream, Ointment, Nasal Spray, Drops</li>
+  </ul>
+
+  <h4>Rules</h4>
+  <ul>
+    <li>Built-in medicines (26 defaults) can be edited and reset but not deleted</li>
+    <li>Custom medicines can be deleted only when no active leads reference the medicine name</li>
+    <li>Renaming a medicine updates <strong>matchedMedicine</strong> on all linked leads</li>
+  </ul>
+
+  <div class="tip"><strong>Admin tip:</strong> Add custom salts first, then medicines linked to those salts. New entries appear in Lead Discovery immediately after save — no restart required.</div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>9</span></div>
+</div>
+
+<!-- PAGE 10: MASTER DATA BEST PRACTICES -->
+<div class="page">
+  <h3>4.3 Master Data Best Practices</h3>
+
+  <div class="two-col">
+    <div>
+      <h4>Do</h4>
+      <ul>
+        <li>Use consistent salt naming (match pharmacopoeia names)</li>
+        <li>Link every medicine to the correct salt before discovery</li>
+        <li>Review built-in defaults before adding duplicates</li>
+        <li>Use Custom badge entries for new product lines</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Avoid</h4>
+      <ul>
+        <li>Deleting salts that still have medicines linked</li>
+        <li>Renaming salts/medicines without checking lead reports</li>
+        <li>Using Reset all during active campaigns</li>
+        <li>Creating duplicate medicine names under different salts</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>4.4 Data Persistence</h3>
+  <p>Salts, medicines, templates, leads, contacts, emails, and all CRM records are saved automatically to your browser's local storage (key: <span class="kbd">religence-crm-v1</span>). Changes persist across sessions on the same browser and device. See Chapter 14 for backup and reset considerations.</p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>10</span></div>
+</div>
+
+<!-- PAGE 11: LEAD DISCOVERY -->
+<div class="page">
+  <h2>5. Lead Discovery</h2>
+  <p>Lead Discovery (<span class="kbd">/lead-discovery</span>) is a three-panel prospecting workspace for finding companies by API salt and branded medicine.</p>
+
+  <h3>5.1 Panel Layout</h3>
+  <table>
+    <tr><th>Panel</th><th>Position</th><th>Function</th></tr>
+    <tr><td>Salts</td><td>Left</td><td>Checkbox list of all salts; search and pagination</td></tr>
+    <tr><td>Medicines</td><td>Center</td><td>Medicines for checked salts; set one as active</td></tr>
+    <tr><td>Results</td><td>Right</td><td>Companies matching the active medicine</td></tr>
+  </table>
+
+  <h3>5.2 Step-by-Step Discovery</h3>
+  <ol>
+    <li>Open <strong>Lead Discovery</strong> from the sidebar.</li>
+    <li>In the <strong>Salts</strong> panel, check one or more salts relevant to your campaign.</li>
+    <li>The <strong>Medicines</strong> panel auto-populates with linked products. All medicines are selected by default when salts change.</li>
+    <li>Click a medicine row to set it as <strong>active</strong> (highlighted). The Results panel updates.</li>
+    <li>Review companies: name, type (Manufacturer/Marketer/Exporter), location, and lead score.</li>
+    <li>Click a company name to open the <strong>Company Profile</strong> drawer.</li>
+  </ol>
+  <div class="footer"><span>Religence CRM User Guide</span><span>11</span></div>
+</div>
+
+<!-- PAGE 12: COMPANY PROFILE -->
+<div class="page">
+  <h3>5.3 Company Profile Drawer</h3>
+  <p>The profile drawer provides deep context before saving a prospect to CRM.</p>
+
+  <h4>Tabs</h4>
+  <ul>
+    <li><strong>Overview</strong> — company narrative, matched salt/medicine/dosage, website, AI summary, match reasons</li>
+    <li><strong>Products</strong> — product list associated with the match</li>
+    <li><strong>Contacts</strong> — known contacts with role, email, and phone</li>
+    <li><strong>Certifications</strong> — WHO-GMP, ISO, and other badges</li>
+    <li><strong>Source Proof</strong> — external reference links</li>
+    <li><strong>AI Notes</strong> — automated research notes</li>
+  </ul>
+
+  <h4>Status indicators</h4>
+  <ul>
+    <li><strong>Saved to CRM</strong> — company already exists; may link to existing lead</li>
+    <li><strong>Save to Contact</strong> — primary button to add to CRM (see Chapter 6)</li>
+  </ul>
+
+  <h3>5.4 Discovery Tips</h3>
+  <ul>
+    <li>Start with one salt when learning the interface; expand to multi-salt searches for portfolio campaigns</li>
+    <li>Sort mentally by lead score in Results — higher scores indicate stronger matches</li>
+    <li>Use pagination in Salts/Medicines panels for large catalogs</li>
+    <li>Re-check master data if expected medicines do not appear after selecting a salt</li>
+  </ul>
+  <div class="footer"><span>Religence CRM User Guide</span><span>12</span></div>
+</div>
+
+<!-- PAGE 13: DISCOVERY EMPTY STATES -->
+<div class="page">
+  <h3>5.5 Empty States &amp; Troubleshooting Discovery</h3>
+
+  <table>
+    <tr><th>Situation</th><th>Cause</th><th>Action</th></tr>
+    <tr><td>No medicines shown</td><td>No salt checked</td><td>Check at least one salt in left panel</td></tr>
+    <tr><td>No companies shown</td><td>No active medicine selected</td><td>Click a medicine row in center panel</td></tr>
+    <tr><td>Expected medicine missing</td><td>Not in Medicine Master or wrong salt link</td><td>Add or fix in Settings ▸ Medicine Master</td></tr>
+    <tr><td>Custom salt shows no medicines</td><td>No medicines linked yet</td><td>Create medicine with that salt in Medicine Master</td></tr>
+  </table>
+
+  <div class="tip"><strong>Multi-salt campaigns:</strong> When multiple salts are checked, the Medicines panel shows a Salt column to distinguish products. Filter using search within each panel to narrow large result sets quickly.</div>
+
+  <p>Discovery company data is matched from a catalog keyed by medicine ID. Custom medicines you add will appear in the medicines panel but may show generated default companies until a full catalog is configured for that product in your deployment.</p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>13</span></div>
+</div>
+
+<!-- PAGE 14: SAVE TO CONTACT -->
+<div class="page">
+  <h2>6. Saving Prospects to CRM</h2>
+  <p>When you find a promising company in Lead Discovery, use <strong>Save to Contact</strong> from the Company Profile drawer.</p>
+
+  <h3>6.1 Save Options</h3>
+  <table>
+    <tr><th>Option</th><th>Creates</th><th>Best For</th></tr>
+    <tr><td>Save company only</td><td>Company record</td><td>Research phase; no contact yet</td></tr>
+    <tr><td>Save company + contact</td><td>Company + contact</td><td>Known contact, no active deal</td></tr>
+    <tr><td>Save and create active lead</td><td>Company + contact + lead (Saved stage)</td><td>Standard pipeline entry</td></tr>
+    <tr><td>Save and start email outreach</td><td>Same as above + opens Send Email</td><td>Ready-to-contact prospects</td></tr>
+  </table>
+
+  <h3>6.2 Contact Selection</h3>
+  <p>If the company profile lists multiple contacts, choose the <strong>Primary contact</strong> from the dropdown before saving. The selected contact's email and role flow into the lead record.</p>
+
+  <h3>6.3 After Saving</h3>
+  <ul>
+    <li><strong>Company only / + contact:</strong> Toast confirmation; remain on discovery or visit Saved Contact</li>
+    <li><strong>Create lead:</strong> Redirects to Active Leads with lead drawer open (<span class="kbd">?lead=</span>)</li>
+    <li><strong>Start outreach:</strong> Redirects to Active Leads with Send Email modal (<span class="kbd">?compose=</span>)</li>
+  </ul>
+
+  <div class="warn">If the company is <strong>Already in CRM</strong>, saving updates existing records rather than creating duplicates. Check the status badge in the profile drawer before saving.</div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>14</span></div>
+</div>
+
+<!-- PAGE 15: SAVE FLOW -->
+<div class="page">
+  <h3>6.4 What Gets Created</h3>
+  <p>When you save with a lead, Religence creates interconnected records:</p>
+  <ul>
+    <li><strong>Lead title</strong> — formatted as <em>{medicine} — {company}</em></li>
+    <li><strong>Product match</strong> — salt name, medicine name, and dosage form from discovery context</li>
+    <li><strong>Stage</strong> — starts at <strong>Saved</strong> (requires verification before outreach in strict workflows)</li>
+    <li><strong>Lead score</strong> — carried from discovery company score</li>
+    <li><strong>Source links</strong> — proof URLs from the company profile</li>
+    <li><strong>Timeline</strong> — initial event logged for audit trail</li>
+  </ul>
+
+  <h3>6.5 Effective Save Strategy</h3>
+  <ol>
+    <li>Review company profile thoroughly (certifications, contacts, source proof)</li>
+    <li>Save as lead (not company-only) when you intend to follow up within 7 days</li>
+    <li>Use "Start email outreach" only after verification if your team requires it</li>
+    <li>Assign the lead to the correct rep in Active Leads after save</li>
+  </ol>
+  <div class="footer"><span>Religence CRM User Guide</span><span>15</span></div>
+</div>
+
+<!-- PAGE 16: VERIFICATION -->
+<div class="page">
+  <h2>7. Verification Queue</h2>
+  <p>The Verification Queue (<span class="kbd">/verification-queue</span>) lists all leads at the <strong>Saved</strong> stage awaiting approval before outreach.</p>
+
+  <h3>7.1 When to Use</h3>
+  <p>Teams with a qualification gate use this screen daily. Managers review new discovery saves for data quality and strategic fit before reps send emails.</p>
+
+  <h3>7.2 Screen Elements</h3>
+  <ul>
+    <li><strong>Pending count badge</strong> — number of Saved leads</li>
+    <li><strong>Table columns:</strong> Lead, Company, Salt/Medicine, Stage, Score, Actions</li>
+    <li><strong>Verify</strong> — moves lead to <strong>Verified</strong> and logs timeline event</li>
+    <li><strong>Review</strong> — opens lead in Active Leads drawer</li>
+    <li><strong>Source</strong> — returns to Lead Discovery</li>
+  </ul>
+
+  <h3>7.3 Alternative Verification Path</h3>
+  <p>You can also verify from the <strong>Active Leads</strong> detail drawer: when stage is Saved, a <strong>Verify</strong> button appears in the stage bar. Both paths produce the same result.</p>
+
+  <div class="tip">Bookmark <span class="kbd">/verification-queue</span> — this route is not in the sidebar. Consider adding it to team onboarding materials.</div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>16</span></div>
+</div>
+
+<!-- PAGE 17: ACTIVE LEADS -->
+<div class="page">
+  <h2>8. Active Leads Pipeline</h2>
+  <p>Active Leads (<span class="kbd">/active-leads</span>) is your daily command center for managing the sales pipeline.</p>
+
+  <h3>8.1 Dashboard KPIs</h3>
+  <p>Four stat cards at the top summarize pipeline health:</p>
+  <ul>
+    <li><strong>Total leads</strong> — all leads in CRM</li>
+    <li><strong>In pipeline</strong> — non-terminal stages</li>
+    <li><strong>Closed</strong> — Won, Lost, and Dormant combined</li>
+    <li><strong>Follow-up due</strong> — leads with follow-up in the next 3 days</li>
+  </ul>
+
+  <h3>8.2 Filtering &amp; Views</h3>
+  <ul>
+    <li><strong>Pipeline tabs:</strong> All | Pipeline | Closed</li>
+    <li><strong>Search:</strong> lead title, company, contact, salt</li>
+    <li><strong>Filters:</strong> Stage, Salt, Assignee — use Clear to reset</li>
+    <li><strong>Stage chips:</strong> quick-filter by stage with live counts</li>
+  </ul>
+
+  <h3>8.3 Lead Table</h3>
+  <p>Columns include avatar, lead &amp; company, contact &amp; assignee, product match (salt/medicine/dosage), stage badge, score, follow-up date. Click any row to open the detail drawer.</p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>17</span></div>
+</div>
+
+<!-- PAGE 18: LEAD DRAWER -->
+<div class="page">
+  <h3>8.4 Lead Detail Drawer</h3>
+
+  <h4>Stage bar</h4>
+  <ul>
+    <li><strong>Stage dropdown</strong> — manually set any stage</li>
+    <li><strong>Verify</strong> — visible when stage is Saved</li>
+    <li><strong>Advance</strong> — move to next pipeline stage</li>
+    <li><strong>Dormant / Lost</strong> — mark terminal inactive states</li>
+  </ul>
+
+  <h4>Tabs</h4>
+  <ul>
+    <li><strong>Overview</strong> — company, contact (mailto link), product match, source links, deals, dates</li>
+    <li><strong>Timeline</strong> — chronological audit of all activities</li>
+    <li><strong>Emails</strong> — thread history; Send email button</li>
+    <li><strong>Notes</strong> — free-text notes; auto-save on blur or explicit Save</li>
+  </ul>
+
+  <h4>Footer actions</h4>
+  <ul>
+    <li><strong>Send email</strong> — opens template-based compose modal</li>
+    <li><strong>Close deal</strong> — creates deal record when in Negotiation</li>
+  </ul>
+
+  <h3>8.5 Creating Leads Manually</h3>
+  <p>Click <strong>New lead</strong> to open the creation modal. Requires an existing company (from discovery save). Fill title, optional contact, salt/medicine/dosage, stage, and assignee. Useful for referrals or trade-show contacts not found in discovery.</p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>18</span></div>
+</div>
+
+<!-- PAGE 19: ACTIVE LEADS TIPS -->
+<div class="page">
+  <h3>8.6 Deep Links</h3>
+  <p>Active Leads supports URL parameters for direct navigation:</p>
+  <ul>
+    <li><span class="kbd">/active-leads?lead={id}</span> — open specific lead drawer</li>
+    <li><span class="kbd">/active-leads?compose={id}</span> — open Send Email modal for lead</li>
+    <li><span class="kbd">/active-leads?company={id}</span> — filter to company's leads</li>
+  </ul>
+
+  <h3>8.7 Pipeline Management Tips</h3>
+  <div class="two-col">
+    <div>
+      <h4>Daily habits</h4>
+      <ul>
+        <li>Sort by follow-up due each morning</li>
+        <li>Advance or update stage after every touch</li>
+        <li>Log notes after calls (even brief ones)</li>
+        <li>Review Replied leads before sending bulk follow-ups</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Weekly habits</h4>
+      <ul>
+        <li>Clear Verification Queue if used</li>
+        <li>Review Lost/Dormant for re-engagement</li>
+        <li>Check Reports for stage bottlenecks</li>
+        <li>Refresh email templates for active salts</li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>19</span></div>
+</div>
+
+<!-- PAGE 20: EMAIL TEMPLATES -->
+<div class="page">
+  <h2>9. Email Templates &amp; Outreach</h2>
+  <p>Email Templates (<span class="kbd">/templates</span>) manage merge-field templates used when sending from Active Leads and Inbox.</p>
+
+  <h3>9.1 Template Library</h3>
+  <p>The left panel lists all templates with category badges:</p>
+  <ul>
+    <li><strong>Introduction</strong> — first outreach (e.g. First Introduction, Salt-specific Outreach)</li>
+    <li><strong>Follow-up</strong> — second touch after no reply</li>
+    <li><strong>Quotation</strong> — post-quotation reminders</li>
+  </ul>
+
+  <h3>9.2 Editing Templates</h3>
+  <p>Select a template to edit in the right panel:</p>
+  <ul>
+    <li><strong>Template name</strong> and <strong>Description</strong></li>
+    <li><strong>Category</strong> — Introduction, Follow-up, or Quotation</li>
+    <li><strong>Subject</strong> and <strong>Body</strong> with merge field support</li>
+  </ul>
+
+  <h3>9.3 Merge Fields</h3>
+  <table>
+    <tr><th>Field</th><th>Inserts</th></tr>
+    <tr><td>{{company_name}}</td><td>Lead's company name</td></tr>
+    <tr><td>{{contact_name}}</td><td>Primary contact name</td></tr>
+    <tr><td>{{salt_name}}</td><td>Matched API salt</td></tr>
+    <tr><td>{{medicine_name}}</td><td>Matched medicine</td></tr>
+    <tr><td>{{dosage_form}}</td><td>Dosage form</td></tr>
+    <tr><td>{{sender_name}}</td><td>Current user (Priya Sharma by default)</td></tr>
+  </table>
+  <div class="footer"><span>Religence CRM User Guide</span><span>20</span></div>
+</div>
+
+<!-- PAGE 21: TEMPLATES CONT -->
+<div class="page">
+  <h3>9.4 Using Merge Fields</h3>
+  <ol>
+    <li>Click a merge field chip to insert at cursor position</li>
+    <li>Use <strong>Insert here</strong> toggle to target Subject vs Body</li>
+    <li>Switch to <strong>Preview</strong> tab to see rendered output</li>
+    <li>Select <strong>Sample data</strong> or a real lead for preview context</li>
+  </ol>
+
+  <h3>9.5 Template Actions</h3>
+  <ul>
+    <li><strong>New template</strong> — create custom template</li>
+    <li><strong>Save changes</strong> — persist edits (Unsaved badge when dirty)</li>
+    <li><strong>Reset</strong> — restore built-in template to default</li>
+    <li><strong>Delete</strong> — remove custom templates only</li>
+    <li><strong>Reset all</strong> — restore all four default templates</li>
+  </ul>
+
+  <h3>9.6 Sending Email from Active Leads</h3>
+  <ol>
+    <li>Open lead drawer → <strong>Send email</strong></li>
+    <li>Select template from dropdown (auto-fills subject and body)</li>
+    <li>Edit message if needed</li>
+    <li>If Gmail not connected, click <strong>Connect Gmail</strong> first</li>
+    <li>Click <strong>Send &amp; update stage</strong></li>
+  </ol>
+  <p>Sending logs the email to Inbox and lead thread, advances pipeline stage, sets follow-up +5 days, and adds a timeline event.</p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>21</span></div>
+</div>
+
+<!-- PAGE 22: OUTREACH TIPS -->
+<div class="page">
+  <h3>9.7 Outreach Best Practices</h3>
+  <ul>
+    <li>Always preview templates with a real lead before bulk sends</li>
+    <li>Customize salt-specific outreach for high-value API campaigns</li>
+    <li>Match template category to lead stage (intro vs follow-up vs quotation)</li>
+    <li>Keep subject lines under 60 characters for mobile readability</li>
+    <li>Include a clear call-to-action (call, sample request, portfolio share)</li>
+  </ul>
+
+  <div class="tip"><strong>Template hygiene:</strong> Review templates quarterly. Update sender name, certification mentions, and product names when your portfolio changes. Use Reset on built-ins if edits go off-track.</div>
+
+  <h3>9.8 Gmail Connection (Demo Mode)</h3>
+  <p>Religence uses a simulated Gmail connection for demonstration. Clicking Connect Gmail sets the connected flag and enables compose/send. In production deployment, this would integrate with Google OAuth. Sent emails appear in Inbox (Sent folder) and on the lead's Emails tab.</p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>22</span></div>
+</div>
+
+<!-- PAGE 23: INBOX -->
+<div class="page">
+  <h2>10. Inbox &amp; Email Management</h2>
+  <p>The Inbox (<span class="kbd">/inbox</span>) provides a four-column email workspace connected to CRM leads.</p>
+
+  <h3>10.1 Layout</h3>
+  <ol>
+    <li><strong>Folder sidebar</strong> — Compose, profile, folders, labels, contacts</li>
+    <li><strong>Message list</strong> — search, star, checkboxes, folder filtering</li>
+    <li><strong>Reading pane</strong> — full message with actions</li>
+    <li><strong>Contacts rail</strong> — quick compose to saved contacts</li>
+  </ol>
+
+  <h3>10.2 Folders</h3>
+  <p>All Mails, Inbox (unread count), Sent, Drafts, Spam, Important/Starred, Trash, Archive. Folder counts update from CRM email records and session filters.</p>
+
+  <h3>10.3 Connecting Gmail</h3>
+  <p>Click <strong>Connect Gmail</strong> in the Inbox sidebar before composing. Profile shows <span class="kbd">sales@religence.example.com</span> when connected. Demo mode injects sample inbound messages on first connect.</p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>23</span></div>
+</div>
+
+<!-- PAGE 24: INBOX ACTIONS -->
+<div class="page">
+  <h3>10.4 Message Actions</h3>
+  <ul>
+    <li><strong>Link to lead</strong> — associate unlinked inbound email with a lead (can advance stage to Replied)</li>
+    <li><strong>Open lead</strong> — navigate to linked lead when leadId is set</li>
+    <li><strong>Reply</strong> — send response via CRM (updates lead stage like pipeline send)</li>
+    <li><strong>Star, Archive, Delete</strong> — organize messages (session state; see note below)</li>
+  </ul>
+
+  <h3>10.5 Compose</h3>
+  <p>Click <strong>Compose Mail</strong> (requires Gmail connected). Enter To, Subject, Body. Sent messages appear in Sent folder and log to CRM if linked to a lead.</p>
+
+  <h3>10.6 Labels</h3>
+  <p>Filter by tags: finance (Mall), internal (Home), lead (Work), unlinked (Friends). Useful for triaging mixed inbound mail.</p>
+
+  <div class="warn"><strong>Session-only state:</strong> Starred, read/unread, archived, and trashed flags reset on browser refresh. CRM-persisted emails (subject, body, lead link) remain in local storage.</div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>24</span></div>
+</div>
+
+<!-- PAGE 25: CONTACTS -->
+<div class="page">
+  <h2>11. Saved Contacts</h2>
+  <p>Saved Contact (<span class="kbd">/contacts</span>) is your directory of all contacts saved from discovery or manual entry.</p>
+
+  <h3>11.1 Summary Stats</h3>
+  <p>Cards show: Saved contacts count, contacts with leads, unique companies, and active links.</p>
+
+  <h3>11.2 Finding Contacts</h3>
+  <ul>
+    <li><strong>Search</strong> — name, email, role, company name</li>
+    <li><strong>Company filter</strong> — narrow to one organization</li>
+    <li><strong>Sort</strong> — Name A–Z, Company, Newest first</li>
+    <li><strong>Pagination</strong> — 12 contacts per page</li>
+  </ul>
+
+  <h3>11.3 Contact Table</h3>
+  <p>Each row shows avatar, contact details, company block, lead count badge (links to filtered Active Leads), saved date, and action icons (email, view details).</p>
+
+  <h3>11.4 Contact Detail Drawer</h3>
+  <ul>
+    <li>Full identity and saved date</li>
+    <li><strong>Send email</strong> (mailto), <strong>Call</strong> (if phone), <strong>View company leads</strong></li>
+    <li>Company section with location and type</li>
+    <li>Linked leads list — click to open lead drawer or send email modal</li>
+    <li>Discovery source link when available</li>
+  </ul>
+  <div class="footer"><span>Religence CRM User Guide</span><span>25</span></div>
+</div>
+
+<!-- PAGE 26: REPORTS -->
+<div class="page">
+  <h2>12. Reports &amp; Analytics</h2>
+  <p>Reports (<span class="kbd">/reports</span>) is a live analytics dashboard built from current CRM data — no separate export step required.</p>
+
+  <h3>12.1 KPI Cards</h3>
+  <p>Top row shows sales-style metrics with trend indicators: total leads, pipeline value indicators, contact counts, and activity summaries. Cards link to relevant modules.</p>
+
+  <h3>12.2 Charts &amp; Widgets</h3>
+  <ul>
+    <li><strong>Recent Outreach</strong> — latest emails with link to Inbox</li>
+    <li><strong>Pipeline Overview</strong> — stage distribution chart</li>
+    <li><strong>Activities</strong> — recent timeline highlights</li>
+    <li><strong>Revenue Analytics</strong> — deal value trends</li>
+    <li><strong>Leads By Source</strong> — donut chart of lead origins</li>
+    <li><strong>Deals Status</strong> — Open/Won/Lost breakdown</li>
+    <li><strong>Weekly Activity</strong> — activity volume over time</li>
+    <li><strong>Win Rate</strong> — radial chart with conversion stats</li>
+    <li><strong>Top API Salts</strong> — lead count by matchedSalt</li>
+  </ul>
+  <div class="footer"><span>Religence CRM User Guide</span><span>26</span></div>
+</div>
+
+<!-- PAGE 27: REPORTS CONT -->
+<div class="page">
+  <h3>12.3 Tables</h3>
+  <ul>
+    <li><strong>Follow-up Tasks</strong> — active and completed tabs from lead follow-up dates</li>
+    <li><strong>Recent Contacts</strong> — newest saved contacts</li>
+    <li><strong>Pipeline Breakdown</strong> — company, contact, salt, stage, assignee, score</li>
+    <li><strong>Active Pipeline</strong> — full pipeline table with link to Active Leads</li>
+  </ul>
+
+  <h3>12.4 Using Reports Effectively</h3>
+  <div class="two-col">
+    <div>
+      <h4>Managers</h4>
+      <ul>
+        <li>Check Pipeline Overview for stage bottlenecks weekly</li>
+        <li>Review Top API Salts to align discovery focus</li>
+        <li>Monitor Follow-up Tasks for overdue reps</li>
+        <li>Track Win Rate trends month-over-month</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Reps</h4>
+      <ul>
+        <li>Start day with Follow-up Tasks tab</li>
+        <li>Use Recent Outreach to continue conversations</li>
+        <li>Check your assignee rows in Pipeline Breakdown</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tip">Reports refresh automatically when CRM data changes. Keep lead stages and follow-up dates current for accurate analytics.</div>
+  <div class="footer"><span>Religence CRM User Guide</span><span>27</span></div>
+</div>
+
+<!-- PAGE 28: BEST PRACTICES -->
+<div class="page">
+  <h2>13. Daily Workflow &amp; Best Practices</h2>
+
+  <h3>13.1 Recommended Daily Flow</h3>
+  <ol>
+    <li><strong>Morning (15 min):</strong> Open Reports → Follow-up Tasks; work overdue items in Active Leads</li>
+    <li><strong>Mid-morning (30 min):</strong> Process Inbox replies; link unlinked messages; advance Replied leads</li>
+    <li><strong>Prospecting block (45 min):</strong> Lead Discovery for target salt → save 3–5 qualified companies</li>
+    <li><strong>Outreach block (30 min):</strong> Send templated emails to Verified leads; update stages</li>
+    <li><strong>End of day (10 min):</strong> Update notes, set follow-up dates, clear Verification Queue items</li>
+  </ol>
+
+  <h3>13.2 Team Roles</h3>
+  <table>
+    <tr><th>Role</th><th>Primary Screens</th><th>Key Actions</th></tr>
+    <tr><td>Sales Rep</td><td>Active Leads, Inbox, Discovery</td><td>Follow-up, email, save prospects</td></tr>
+    <tr><td>BD Manager</td><td>Reports, Verification Queue</td><td>Approve leads, review pipeline</td></tr>
+    <tr><td>Admin</td><td>Salts/Medicine Master, Templates</td><td>Maintain catalogs and templates</td></tr>
+  </table>
+
+  <h3>13.3 Data Quality Rules</h3>
+  <ul>
+    <li>One lead per company-medicine combination unless strategically justified</li>
+    <li>Always verify Saved leads before first email in gated workflows</li>
+    <li>Keep product match fields accurate — they drive templates and reports</li>
+    <li>Log every significant call or meeting in lead notes</li>
+  </ul>
+  <div class="footer"><span>Religence CRM User Guide</span><span>28</span></div>
+</div>
+
+<!-- PAGE 29: TROUBLESHOOTING -->
+<div class="page">
+  <h2>14. Troubleshooting &amp; Data Notes</h2>
+
+  <h3>14.1 Common Issues</h3>
+  <table>
+    <tr><th>Problem</th><th>Solution</th></tr>
+    <tr><td>Data disappeared after browser clear</td><td>CRM uses localStorage; avoid clearing all site data</td></tr>
+    <tr><td>Templates/salts reverted unexpectedly</td><td>Reset all was clicked; use Save diligently</td></tr>
+    <tr><td>Cannot delete salt/medicine</td><td>Remove linked records first (medicines/leads)</td></tr>
+    <tr><td>Compose disabled in Inbox</td><td>Connect Gmail from sidebar first</td></tr>
+    <tr><td>Lead not in discovery results</td><td>Company catalog is per medicine; check active medicine selection</td></tr>
+    <tr><td>Merge fields show blank in preview</td><td>Select a lead with complete product match data</td></tr>
+    <tr><td>Verification Queue empty</td><td>No leads at Saved stage; check Active Leads filters</td></tr>
+  </table>
+
+  <h3>14.2 Data Storage</h3>
+  <p>All CRM entities persist under localStorage key <span class="kbd">religence-crm-v1</span>. Theme preferences use separate keys (<span class="kbd">ynex*</span>). The theme switcher's "Reset all" may wipe CRM data — use with caution.</p>
+
+  <h3>14.3 Browser Recommendations</h3>
+  <p>Use Chrome or Edge for best compatibility. Keep one primary browser/device for CRM work to avoid split data. For team deployments, plan migration to a shared backend before multi-user production use.</p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>29</span></div>
+</div>
+
+<!-- PAGE 30: QUICK REFERENCE -->
+<div class="page">
+  <h2>Quick Reference</h2>
+
+  <h3>Essential Routes</h3>
+  <table>
+    <tr><th>Task</th><th>Go To</th></tr>
+    <tr><td>Manage pipeline</td><td>/active-leads</td></tr>
+    <tr><td>Find new prospects</td><td>/lead-discovery</td></tr>
+    <tr><td>Read/send email</td><td>/inbox</td></tr>
+    <tr><td>Find a contact</td><td>/contacts</td></tr>
+    <tr><td>View KPIs</td><td>/reports</td></tr>
+    <tr><td>Approve new leads</td><td>/verification-queue</td></tr>
+    <tr><td>Edit email templates</td><td>/templates</td></tr>
+    <tr><td>Manage salts</td><td>/settings/salts</td></tr>
+    <tr><td>Manage medicines</td><td>/settings/medicines</td></tr>
+  </table>
+
+  <h3>Keyboard &amp; UX Tips</h3>
+  <ul>
+    <li>Press <strong>Escape</strong> to close drawers and modals</li>
+    <li>Use search boxes before scrolling long tables</li>
+    <li>Watch for Unsaved badges before navigating away from editors</li>
+    <li>Follow-up due KPI → prioritize those leads each morning</li>
+  </ul>
+
+  <p style="margin-top: 12mm; text-align: center; color: #64748b; font-size: 9pt;">
+    <strong>Religence CRM User Guide</strong> · Version 1.0 · June 2026<br/>
+    For support and feature requests, contact your system administrator.
+  </p>
+  <div class="footer"><span>Religence CRM User Guide</span><span>30</span></div>
+</div>
+
+</body>
+</html>
