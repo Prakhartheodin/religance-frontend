@@ -18,7 +18,7 @@ import {
   listBackendEmailTemplates,
   saveBackendEmailTemplates,
 } from "@/shared/crm/store/outlook-api";
-import { CURRENT_USER } from "@/shared/crm/store/types";
+import { getUserDisplayName } from "@/shared/auth/auth-client";
 import { generateCrmId } from "@/shared/crm/store/workflow";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
@@ -37,7 +37,7 @@ const SAMPLE_VARS: TemplateVariables = {
   salt_name: "Budesonide",
   medicine_name: "Budecort Respules",
   dosage_form: "Respules",
-  sender_name: CURRENT_USER,
+  sender_name: getUserDisplayName(),
 };
 
 type EditorTab = "edit" | "preview";

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { InboxAvatar } from "./inbox-avatar";
 import { REPLY_TOOLBAR_GROUPS } from "./inbox-constants";
 import { splitEmailBody } from "./inbox-utils";
-import { CURRENT_USER } from "@/shared/crm/store/types";
+import { getUserDisplayName } from "@/shared/auth/auth-client";
 import type { InboxRowMeta } from "./inbox-list";
 
 function formatDetailDate(sentAt: string): string {
@@ -25,6 +25,7 @@ function formatDetailDate(sentAt: string): string {
 export function InboxDetailPanel({
   active,
   meta,
+  mailboxDisplayName,
   gmailConnected,
   starred,
   onToggleStar,
@@ -44,6 +45,7 @@ export function InboxDetailPanel({
 }: {
   active: CrmEmail;
   meta: InboxRowMeta & { lead?: CrmLead };
+  mailboxDisplayName?: string | null;
   gmailConnected: boolean;
   starred: boolean;
   onToggleStar: () => void;
@@ -63,6 +65,7 @@ export function InboxDetailPanel({
 }) {
   const company =
     meta.lead && companies.find((c) => c.id === meta.lead!.companyId);
+  const userName = mailboxDisplayName?.trim() || getUserDisplayName();
   const replyTo =
     active.direction === "inbound" ? active.fromEmail : active.toEmail;
   const paragraphs = splitEmailBody(active.body);
@@ -191,7 +194,7 @@ export function InboxDetailPanel({
 
         <article className="crm-inbox-message-card">
           <p className="crm-inbox-message-greeting">
-            Hi, {CURRENT_USER} Greetings 👋
+            Hi, {userName} Greetings 👋
           </p>
           {paragraphs.map((para, i) => (
             <p key={i}>{para}</p>

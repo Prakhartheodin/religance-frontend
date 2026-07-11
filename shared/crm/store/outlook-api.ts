@@ -1,6 +1,6 @@
 "use client";
 
-import { getToken, getUser } from "@/shared/auth/auth-client";
+import { getToken } from "@/shared/auth/auth-client";
 import type { DiscoveryMedicine } from "./medicines-master";
 import type { SaltMasterItem } from "./salts-master";
 import type { EmailTemplate } from "./email-templates";
@@ -20,6 +20,7 @@ export type OutlookAccount = {
   id: string;
   provider: "outlook";
   email: string;
+  displayName?: string | null;
   status: "active" | "revoked" | "error";
   createdAt: string;
 };
@@ -151,15 +152,22 @@ async function putJson<T>(path: string, payload: unknown): Promise<JsonResult<T>
   }
 }
 
-export function getOutlookConnectUrl(): string {
-  const uid = getUser()?.id ?? "";
-  return `${BACKEND_BASE}/v1/email/auth/microsoft/start?userId=${encodeURIComponent(
-    uid
-  )}`;
+export async function fetchOutlookConnectUrl(): Promise<JsonResult<{ url: string }>> {
+  return getJson<{ url: string }>("/v1/email/auth/microsoft");
 }
 
 export async function listOutlookAccounts(): Promise<JsonResult<OutlookAccount[]>> {
   return getJson<OutlookAccount[]>("/v1/email/accounts");
+}
+
+export async function disconnectOutlookAccount(
+  accountId: string
+): Promise<JsonResult<{ success: boolean }>> {
+  return postJson<{ success: boolean }>(
+    `/v1/email/accounts/${encodeURIComponent(accountId)}`,
+    {},
+    "DELETE"
+  );
 }
 
 export async function listOutlookThreads(

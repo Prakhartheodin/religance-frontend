@@ -44,14 +44,22 @@ export async function resetPassword(token: string, password: string): Promise<vo
   await post("/reset-password", { token, password });
 }
 
+function notifyAuthChange(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("religence-auth-change"));
+  }
+}
+
 export async function login(email: string, password: string): Promise<AuthUser> {
   const { token, user } = await post("/login", { email, password });
   localStorage.setItem(KEY, JSON.stringify({ token, user }));
+  notifyAuthChange();
   return user;
 }
 
 export function logout(): void {
   localStorage.removeItem(KEY);
+  notifyAuthChange();
 }
 
 function read(): { token: string; user: AuthUser } | null {
@@ -68,6 +76,13 @@ export function getToken(): string | null {
 
 export function getUser(): AuthUser | null {
   return read()?.user ?? null;
+}
+
+export function getUserDisplayName(): string {
+  const user = getUser();
+  if (user?.name?.trim()) return user.name.trim();
+  if (user?.email) return user.email.split("@")[0];
+  return "Account";
 }
 
 /** True if a token exists and its JWT exp is in the future. */

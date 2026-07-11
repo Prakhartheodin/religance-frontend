@@ -1,6 +1,6 @@
 "use client";
 
-import { isAuthed } from "@/shared/auth/auth-client";
+import { isAuthed, getUser, getUserDisplayName } from "@/shared/auth/auth-client";
 import type { CompanyProfileDetail } from "@/shared/crm/lead-discovery/company-profile-types";
 import {
   createContext,
@@ -35,7 +35,7 @@ import {
   isDefaultSalt,
   type SaltMasterItem,
 } from "./salts-master";
-import { loadCrmState, resetCrmState, saveCrmState } from "./storage";
+import { clearOutlookCache, loadCrmState, resetCrmState, saveCrmState } from "./storage";
 import type {
   CrmCompany,
   CrmContact,
@@ -47,7 +47,6 @@ import type {
   LeadStage,
   SaveToContactOption,
 } from "./types";
-import { CURRENT_USER } from "./types";
 import {
   buildLeadTitle,
   followUpInDays,
@@ -62,7 +61,8 @@ import {
 import {
   getBackendMedicines,
   getBackendSalts,
-  getOutlookConnectUrl,
+  fetchOutlookConnectUrl,
+  disconnectOutlookAccount as disconnectOutlookAccountApi,
   getOutlookThread,
   listBackendMasterData,
   listOutlookAccounts,
@@ -122,7 +122,8 @@ type CrmContextValue = CrmState & {
   sendLeadEmail: (input: SendLeadEmailInput) => void;
   sendCrmEmail: (input: SendCrmEmailInput) => void;
   linkEmailToLead: (emailId: string, leadId: string) => void;
-  connectGmail: () => void;
+  connectGmail: () => Promise<void>;
+  disconnectOutlook: (accountId?: string | null) => Promise<void>;
   syncOutlookInbox: (
     preferredAccountId?: string | null,
     preferredEmail?: string | null
@@ -185,6 +186,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const masterSyncedRef = useRef(false);
   const crmLoadedRef = useRef(false);
   const crmSyncedRef = useRef(false);
+  const authUserRef = useRef(getUser()?.id ?? "");
+  const [authUserId, setAuthUserId] = useState(getUser()?.id ?? "");
   const [masterDataSynced, setMasterDataSynced] = useState(false);
   const [pendingComposeLeadId, setPendingComposeLeadId] = useState<
     string | null
@@ -198,7 +201,38 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     }
     setState(loaded);
     setHydrated(true);
+    authUserRef.current = getUser()?.id ?? "";
+    setAuthUserId(authUserRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const reloadForAuthUser = () => {
+      const nextUserId = getUser()?.id ?? "";
+      if (nextUserId === authUserRef.current) return;
+      authUserRef.current = nextUserId;
+      setAuthUserId(nextUserId);
+
+      if (!nextUserId) {
+        setState(clearOutlookCache());
+        return;
+      }
+
+      const loaded = loadCrmState();
+      loaded.salts = [];
+      loaded.medicines = [];
+      loaded.gmailConnected = false;
+      loaded.outlookAccountId = null;
+      loaded.outlookEmail = null;
+      loaded.outlookAccounts = [];
+      loaded.emails = [];
+      setState(loaded);
+    };
+
+    window.addEventListener("religence-auth-change", reloadForAuthUser);
+    return () => window.removeEventListener("religence-auth-change", reloadForAuthUser);
+  }, [hydrated]);
 
   useEffect(() => {
     if (hydrated) saveCrmState(state);
@@ -502,7 +536,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
             location: profile.location,
             stage: "Saved",
             leadScore: profile.leadScore,
-            assignedTo: CURRENT_USER,
+            assignedTo: getUserDisplayName(),
             followUpDate: followUpInDays(7),
             lastActivity: todayIso(),
             notes: profile.aiNotes,
@@ -1029,6 +1063,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     [patch, state.outlookAccountId]
   );
 
+  useEffect(() => {
+    if (!hydrated || !authUserId) return;
+    void syncOutlookInbox(null, null);
+  }, [hydrated, authUserId, syncOutlookInbox]);
+
   const switchOutlookAccount = useCallback(
     async (accountId: string) => {
       await syncOutlookInbox(accountId, null);
@@ -1036,11 +1075,43 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     [syncOutlookInbox]
   );
 
-  const connectGmail = useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.location.href = getOutlookConnectUrl();
+  const connectGmail = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    if (!getUser()?.id) return;
+    const result = await fetchOutlookConnectUrl();
+    if (result.live && result.data.url) {
+      window.location.href = result.data.url;
     }
   }, []);
+
+  const disconnectOutlook = useCallback(
+    async (accountId?: string | null) => {
+      const targetId = accountId ?? state.outlookAccountId;
+      if (targetId) {
+        await disconnectOutlookAccountApi(targetId);
+      }
+
+      const accountsRes = await listOutlookAccounts();
+      const remaining = accountsRes.live
+        ? accountsRes.data.filter(
+            (account) =>
+              account.status === "active" &&
+              (!targetId || account.id !== targetId)
+          )
+        : [];
+
+      const nextAccount = remaining[0] ?? null;
+      patch((prev) => ({
+        ...prev,
+        gmailConnected: Boolean(nextAccount),
+        outlookAccountId: nextAccount?.id ?? null,
+        outlookEmail: nextAccount?.email ?? null,
+        outlookAccounts: remaining,
+        emails: nextAccount ? prev.emails : [],
+      }));
+    },
+    [patch, state.outlookAccountId]
+  );
 
   const resetStore = useCallback(() => {
     setState(resetCrmState());
@@ -1353,6 +1424,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       sendCrmEmail,
       linkEmailToLead,
       connectGmail,
+      disconnectOutlook,
       syncOutlookInbox,
       switchOutlookAccount,
       getCompany: (id) => state.companies.find((c) => c.id === id),
@@ -1372,7 +1444,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         salt_name: lead.matchedSalt,
         medicine_name: lead.matchedMedicine,
         dosage_form: lead.dosageForm,
-        sender_name: CURRENT_USER,
+        sender_name: getUserDisplayName(),
       }),
       updateEmailTemplate,
       replaceEmailTemplates,
@@ -1412,6 +1484,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       sendCrmEmail,
       linkEmailToLead,
       connectGmail,
+      disconnectOutlook,
       syncOutlookInbox,
       switchOutlookAccount,
       findCompanyByDiscoveryId,

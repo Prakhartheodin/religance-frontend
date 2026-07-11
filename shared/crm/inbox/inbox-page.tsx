@@ -1,7 +1,8 @@
 "use client";
 
 import { applyTemplate, useCrm } from "@/shared/crm/store/crm-context";
-import { CURRENT_USER, type CrmEmail } from "@/shared/crm/store/types";
+import { getUserDisplayName } from "@/shared/auth/auth-client";
+import type { CrmEmail } from "@/shared/crm/store/types";
 import Seo from "@/shared/layout-components/seo/seo";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { InboxCompose } from "./inbox-compose";
@@ -13,6 +14,7 @@ import { InboxSidebar } from "./inbox-sidebar";
 import {
   getInboxTag,
   resolvePeerEmail,
+  resolveMailboxProfile,
   resolveSenderName,
   suggestLeadForEmail,
   type InboxTag,
@@ -29,6 +31,7 @@ export default function InboxPage() {
     outlookAccounts,
     outlookEmail,
     connectGmail,
+    disconnectOutlook,
     syncOutlookInbox,
     switchOutlookAccount,
     linkEmailToLead,
@@ -41,6 +44,27 @@ export default function InboxPage() {
     () => [...emails].sort((a, b) => b.sentAt.localeCompare(a.sentAt)),
     [emails]
   );
+
+  const activeOutlookAccount = useMemo(
+    () =>
+      outlookAccounts?.find((a) => a.id === outlookAccountId) ??
+      outlookAccounts?.find((a) => a.status === "active") ??
+      null,
+    [outlookAccounts, outlookAccountId]
+  );
+
+  const activeMailbox = useMemo(() => {
+    return resolveMailboxProfile(
+      activeOutlookAccount
+        ? {
+            email: activeOutlookAccount.email,
+            displayName: activeOutlookAccount.displayName,
+          }
+        : outlookEmail
+          ? { email: outlookEmail, displayName: null }
+          : null
+    );
+  }, [activeOutlookAccount, outlookEmail]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeFolder, setActiveFolder] = useState<InboxFolderName>("All Mails");
@@ -308,7 +332,7 @@ export default function InboxPage() {
       salt_name: "",
       medicine_name: "",
       dosage_form: "",
-      sender_name: CURRENT_USER,
+      sender_name: activeMailbox?.name ?? getUserDisplayName(),
     };
   }, [buildTemplateVars, composeDraft.to, leads]);
 
@@ -407,6 +431,13 @@ export default function InboxPage() {
     setAuthError(null);
     connectGmail();
   }, [connectGmail]);
+
+  const handleDisconnectOutlook = useCallback(async () => {
+    setSelectedId(null);
+    setReplyText("");
+    setComposeOpen(false);
+    await disconnectOutlook(outlookAccountId);
+  }, [disconnectOutlook, outlookAccountId]);
 
   const handleSwitchOutlookAccount = useCallback(
     (accountId: string) => {
@@ -554,6 +585,8 @@ export default function InboxPage() {
               <InboxSidebar
                 gmailConnected={gmailConnected}
                 accountEmail={outlookEmail ?? null}
+                accountDisplayName={activeOutlookAccount?.displayName ?? null}
+                onDisconnectOutlook={handleDisconnectOutlook}
                 onConnect={handleConnectOutlook}
                 onCompose={() => setComposeOpen(true)}
                 activeFolder={activeFolder}
@@ -585,6 +618,7 @@ export default function InboxPage() {
                 <InboxDetailPanel
                   active={active}
                   meta={activeMeta}
+                  mailboxDisplayName={activeMailbox?.name ?? null}
                   gmailConnected={gmailConnected}
                   starred={starredIds.includes(active.id)}
                   onToggleStar={() =>

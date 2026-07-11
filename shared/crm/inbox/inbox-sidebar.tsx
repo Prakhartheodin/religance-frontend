@@ -1,6 +1,7 @@
 "use client";
 
-import { CURRENT_USER } from "@/shared/crm/store/types";
+import { getUser, getUserDisplayName } from "@/shared/auth/auth-client";
+import { resolveMailboxProfile } from "./inbox-utils";
 import {
   INBOX_FOLDERS,
   INBOX_LABELS,
@@ -12,6 +13,8 @@ import { InboxAvatar } from "./inbox-avatar";
 export function InboxSidebar({
   gmailConnected,
   accountEmail,
+  accountDisplayName,
+  onDisconnectOutlook,
   onConnect,
   onCompose,
   activeFolder,
@@ -22,6 +25,8 @@ export function InboxSidebar({
 }: {
   gmailConnected: boolean;
   accountEmail: string | null;
+  accountDisplayName?: string | null;
+  onDisconnectOutlook?: () => void | Promise<void>;
   onConnect: () => void;
   onCompose: () => void;
   activeFolder: InboxFolderName;
@@ -30,6 +35,16 @@ export function InboxSidebar({
   activeTag: InboxTag | null;
   onTagChange: (tag: InboxTag | null) => void;
 }) {
+  const mailboxProfile =
+    gmailConnected && accountEmail
+      ? resolveMailboxProfile({
+          email: accountEmail,
+          displayName: accountDisplayName,
+        })
+      : null;
+  const displayName = mailboxProfile?.name ?? getUserDisplayName();
+  const displayEmail = mailboxProfile?.email ?? getUser()?.email ?? accountEmail;
+
   return (
     <aside className="crm-inbox-sidebar">
       <div className="crm-inbox-sidebar-scroll">
@@ -44,14 +59,24 @@ export function InboxSidebar({
         </button>
 
         <div className="crm-inbox-profile-card">
-          <InboxAvatar name={CURRENT_USER} size="lg" />
+          <InboxAvatar name={displayName} size="lg" />
           <div className="crm-inbox-profile-meta">
-            <p className="crm-inbox-profile-name">{CURRENT_USER}</p>
+            <p className="crm-inbox-profile-name">{displayName}</p>
             <p className="crm-inbox-profile-email">
               {gmailConnected
-                ? accountEmail ?? "Outlook connected"
-                : "Connect Outlook to sync"}
+                ? displayEmail ?? "Outlook connected"
+                : displayEmail ?? "Connect Outlook to sync"}
             </p>
+            {gmailConnected && onDisconnectOutlook ? (
+              <button
+                type="button"
+                className="crm-inbox-profile-logout"
+                onClick={() => void onDisconnectOutlook()}
+              >
+                <i className="ri-logout-box-r-line" aria-hidden />
+                Disconnect Outlook
+              </button>
+            ) : null}
           </div>
         </div>
 

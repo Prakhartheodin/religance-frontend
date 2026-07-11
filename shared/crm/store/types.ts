@@ -104,6 +104,7 @@ export type OutlookMailboxAccount = {
   id: string;
   provider: "outlook";
   email: string;
+  displayName?: string | null;
   status: "active" | "revoked" | "error";
   createdAt: string;
 };

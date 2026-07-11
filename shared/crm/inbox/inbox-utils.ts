@@ -153,3 +153,27 @@ export function suggestLeadForEmail(
     leads.find((l) => l.contactEmail.toLowerCase().includes(stem)) ?? null
   );
 }
+
+export function mailboxDisplayNameFromEmail(email: string): string {
+  const local = email.split("@")[0] ?? email;
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+export function resolveMailboxProfile(
+  account:
+    | {
+        email: string;
+        displayName?: string | null;
+      }
+    | null
+    | undefined
+): { name: string; email: string } | null {
+  if (!account?.email) return null;
+  const name =
+    account.displayName?.trim() || mailboxDisplayNameFromEmail(account.email);
+  return { name, email: account.email };
+}
