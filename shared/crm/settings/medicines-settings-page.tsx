@@ -185,7 +185,7 @@ export default function MedicinesSettingsPage() {
           <div className="min-w-0 flex-1 basis-full lg:basis-auto">
             <h5 className="box-title mb-0 before:!hidden">Medicine Master</h5>
             <p className="text-[0.75rem] text-textmuted mb-0 mt-1">
-              Branded medicines mapped to salts for Lead Discovery and leads.
+              API medicines mapped to salts from imported buyer master data.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 ms-auto">
@@ -459,7 +459,7 @@ export default function MedicinesSettingsPage() {
                     onChange={(e) =>
                       setDraft({ ...draft, name: e.target.value })
                     }
-                    placeholder="e.g. Budecort Respules"
+                    placeholder="e.g. Budesonide"
                   />
                 </div>
 

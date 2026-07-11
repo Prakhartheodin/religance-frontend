@@ -521,10 +521,9 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
   box-shadow: none !important;
 }
 
-/* Lead Discovery — panel tables: row borders, no horizontal scroll, compact cells */
+/* Lead Discovery — panel tables: row borders, compact cells */
 .lead-discovery-salts,
-.lead-discovery-medicines,
-.lead-discovery-results {
+.lead-discovery-medicines {
   .ti-custom-table {
     min-width: 0 !important;
     width: 100%;
@@ -549,6 +548,7 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
       padding-block: 0.35rem !important;
     }
 
+    /* Salt/medicine name column: shrink checkbox column, expand name */
     th:last-child,
     td:last-child {
       width: auto;
@@ -560,12 +560,96 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
   }
 }
 
+.lead-discovery-board {
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.lead-discovery-results-panel {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.lead-discovery-results-scroll {
+  .simplebar-content-wrapper {
+    overflow-x: auto !important;
+  }
+
+  .simplebar-content {
+    min-width: 0;
+  }
+}
+
 .lead-discovery-results {
+  width: 100%;
+  max-width: 100%;
+  padding-inline: 0.5rem 1.5rem;
+  box-sizing: border-box;
+
   .ti-custom-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: auto;
+    border-collapse: collapse;
+
+    thead th {
+      @apply border-b border-defaultborder dark:border-defaultborder/10;
+    }
+
+    tbody td {
+      @apply border-b border-defaultborder dark:border-defaultborder/10;
+    }
+
+    tbody tr:last-child td {
+      @apply border-b border-defaultborder dark:border-defaultborder/10;
+    }
+
     th,
     td {
       padding-inline: 0.5rem !important;
       padding-block: 0.5rem !important;
+      vertical-align: middle;
+      white-space: normal !important;
+    }
+
+    th:first-child,
+    td:first-child {
+      width: 38%;
+      max-width: 0;
+      min-width: 8rem;
+    }
+
+    th:nth-child(2),
+    td:nth-child(2) {
+      width: 24%;
+      min-width: 4.5rem;
+    }
+
+    th:nth-child(3),
+    td:nth-child(3) {
+      width: 16%;
+      min-width: 3.25rem;
+    }
+
+    th:nth-child(4),
+    td:nth-child(4) {
+      width: 1%;
+      min-width: 3.5rem;
+      padding-inline-end: 1.25rem !important;
+      text-align: end;
+      white-space: nowrap !important;
+    }
+
+    td:nth-child(2) .badge {
+      display: inline-block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
     }
   }
 }
@@ -1094,10 +1178,171 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
   }
 }
 
+/* Card-header action buttons collapse to icon-width in the header's flex row
+   (a template .ti-btn quirk — its content-box shrinks to ~0, clipping the
+   label). Pin them to content width. Scoped to headers so full-width form /
+   modal submit buttons are untouched. */
+.box-header .ti-btn {
+  width: max-content;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Destructive confirmation overlay */
+.confirm-delete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+
+  &__scrim {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgb(0 0 0 / 0.55);
+    cursor: pointer;
+    animation: confirm-delete-fade-in 200ms ease-out both;
+  }
+
+  &__dialog {
+    position: relative;
+    width: 100%;
+    max-width: 22rem;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgb(var(--default-border) / 1);
+    box-shadow:
+      0 24px 48px rgb(0 0 0 / 0.28),
+      0 0 0 1px rgb(var(--default-border) / 0.35);
+    text-align: center;
+    animation: confirm-delete-scale-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    @apply bg-white dark:bg-bodybg text-defaulttextcolor;
+  }
+
+  &__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    margin: 0 auto 0.875rem;
+    border-radius: 9999px;
+    font-size: 1.35rem;
+    @apply bg-danger/10 text-danger;
+  }
+
+  &__title {
+    margin: 0 0 0.5rem;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  &__desc {
+    margin: 0 0 1.25rem;
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    @apply text-textmuted;
+  }
+
+  &__entity {
+    @apply text-defaulttextcolor;
+  }
+
+  &__actions {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 0.5rem;
+
+    @media (min-width: 400px) {
+      flex-direction: row;
+      justify-content: center;
+    }
+  }
+
+  &__btn {
+    min-height: 2.5rem;
+    min-width: 6.5rem;
+    flex: 1 1 auto;
+
+    @media (min-width: 400px) {
+      flex: 0 1 auto;
+    }
+
+    &--danger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+
+  &__spinner {
+    display: inline-block;
+    width: 0.875rem;
+    height: 0.875rem;
+    margin-inline-end: 0.4rem;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 9999px;
+    animation: confirm-delete-spin 600ms linear infinite;
+  }
+}
+
+@keyframes confirm-delete-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes confirm-delete-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes confirm-delete-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-delete-overlay__scrim,
+  .confirm-delete-overlay__dialog,
+  .confirm-delete-overlay__spinner {
+    animation: none !important;
+  }
+}
+
 /* Saved Contact — directory page */
 .saved-contacts-page {
   width: 100%;
   max-width: 100%;
+
+  /* Keep every button's icon + label on one line, sized to its content — a
+     row-flex context was collapsing the label to icon width and clipping it. */
+  .ti-btn {
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    width: max-content;
+    flex: 0 0 auto;
+
+    i {
+      line-height: 1;
+    }
+  }
 
   .saved-contacts-loading {
     text-align: center;
@@ -1312,8 +1557,24 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
   .saved-contacts-empty-desc {
     font-size: 0.8125rem;
     max-width: 22rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
+    line-height: 1.5;
     @apply text-textmuted;
+  }
+
+  .saved-contacts-empty-cta {
+    min-height: 2.5rem;
+    padding-inline: 1.1rem;
+    font-weight: 500;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+
+    &:hover {
+      box-shadow: 0 6px 16px rgb(var(--primary-rgb) / 0.28);
+    }
+
+    &:active {
+      transform: scale(0.97);
+    }
   }
 
   .saved-contacts-table-wrap {
@@ -1357,7 +1618,7 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     &:hover {
       background-color: rgb(var(--primary-rgb) / 0.04);
 
-      .saved-contacts-icon-btn:last-child {
+      .saved-contacts-icon-btn:last-child:not(.saved-contacts-icon-btn--danger) {
         @apply text-primary border-primary/30;
       }
     }
@@ -1466,6 +1727,11 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     &:hover {
       border-color: rgb(var(--primary-rgb) / 0.35);
       @apply text-primary bg-primary/5;
+    }
+
+    &--danger:hover {
+      border-color: rgb(var(--danger-rgb) / 0.4);
+      @apply text-danger bg-danger/5;
     }
   }
 
@@ -1612,6 +1878,13 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
       &:hover {
         background-color: rgb(var(--primary-rgb) / 0.9);
         @apply text-white border-primary;
+      }
+    }
+
+    &--danger {
+      &:hover {
+        border-color: rgb(var(--danger-rgb) / 0.4);
+        @apply bg-danger/5 text-danger;
       }
     }
   }
@@ -2781,32 +3054,35 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
 .crm-inbox-compose {
   position: fixed;
   inset: 0;
-  z-index: 1050;
+  z-index: 1100;
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
-  padding: 1.25rem;
+  padding: 1rem;
   pointer-events: none;
 
   .crm-inbox-compose-backdrop {
     position: absolute;
     inset: 0;
-    background: rgb(0 0 0 / 0.25);
+    background: rgb(0 0 0 / 0.45);
+    backdrop-filter: blur(2px);
     pointer-events: auto;
   }
 
   .crm-inbox-compose-panel {
     position: relative;
     pointer-events: auto;
-    width: min(620px, calc(100vw - 2rem));
-    max-height: min(640px, calc(100vh - 2rem));
+    width: min(640px, calc(100vw - 2rem));
+    max-height: min(700px, calc(100vh - 2rem));
     display: flex;
     flex-direction: column;
-    border-radius: 1rem;
+    border-radius: 1.1rem;
     overflow: hidden;
-    box-shadow: 0 12px 40px rgb(0 0 0 / 0.18);
+    box-shadow: 0 24px 60px rgb(0 0 0 / 0.28);
     border: 1px solid rgb(var(--default-border) / 0.8);
     background: rgb(var(--body-bg-rgb) / 1);
+    transform: translateY(0);
+    animation: composePanelIn 180ms ease-out;
   }
 
   .crm-inbox-compose-header {
@@ -2829,16 +3105,17 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
 
   .crm-inbox-compose-fields {
     flex: 1;
-    overflow: hidden;
+    overflow: auto;
     display: flex;
     flex-direction: column;
-    background: rgb(var(--custom-white) / 1);
+    background: rgb(var(--body-bg-rgb) / 1);
   }
 
   .crm-inbox-compose-row {
     display: grid;
-    grid-template-columns: 4.25rem 1fr;
+    grid-template-columns: 5rem 1fr;
     border-bottom: 1px solid rgb(var(--default-border) / 0.6);
+    align-items: center;
 
     label {
       padding: 0.75rem 1rem;
@@ -2850,10 +3127,14 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     input {
       border: none;
       outline: none;
-      padding: 0.75rem 1rem;
+      padding: 0.75rem 1rem 0.75rem 0.25rem;
       font-size: 0.88rem;
       background: transparent;
       @apply text-defaulttextcolor;
+
+      &::placeholder {
+        @apply text-textmuted;
+      }
     }
   }
 
@@ -2865,8 +3146,13 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     font-size: 0.92rem;
     line-height: 1.65;
     resize: none;
-    min-height: 12rem;
+    min-height: 14rem;
+    background: rgb(var(--body-bg-rgb) / 1);
     @apply text-defaulttextcolor;
+
+    &::placeholder {
+      @apply text-textmuted;
+    }
   }
 
   .crm-inbox-compose-footer {
@@ -2876,6 +3162,39 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     padding: 0.75rem 1.25rem;
     border-top: 1px solid rgb(var(--default-border) / 0.7);
     @apply bg-bodybg;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .crm-inbox-compose {
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem;
+
+    .crm-inbox-compose-panel {
+      width: min(100%, 100vw - 1.5rem);
+      max-height: min(92vh, calc(100vh - 1.5rem));
+      border-radius: 0.9rem;
+    }
+
+    .crm-inbox-compose-header {
+      padding: 0.85rem 1rem;
+    }
+
+    .crm-inbox-compose-footer {
+      padding: 0.7rem 1rem;
+    }
+  }
+}
+
+@keyframes composePanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

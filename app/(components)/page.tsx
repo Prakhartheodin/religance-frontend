@@ -1,5 +1,6 @@
 "use client";
 
+import { login, resendVerification } from "@/shared/auth/auth-client";
 import BrandLogo from "@/shared/layout-components/brand-logo/brand-logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,31 +9,46 @@ import { useState } from "react";
 export default function Home() {
   const [passwordshow1, setpasswordshow1] = useState(false);
   const [err, setError] = useState("");
-  const [data, setData] = useState({
-    email: "adminnextjs@gmail.com",
-    password: "1234567890",
-  });
+  const [unverified, setUnverified] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [data, setData] = useState({ email: "", password: "" });
   const { email, password } = data;
 
   const changeHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
     setData({ ...data, [e.target.name]: e.target.value });
     setError("");
+    setUnverified(false);
   };
 
   const router = useRouter();
-  const RouteChange = () => {
-    router.push("/active-leads/");
+
+  const handleSignIn = async () => {
+    setBusy(true);
+    setError("");
+    setUnverified(false);
+    try {
+      await login(email, password);
+      router.push("/active-leads/");
+    } catch (e: any) {
+      // Backend returns 403 "verify your email…" for unverified accounts.
+      if (typeof e?.message === "string" && /verify your email/i.test(e.message)) {
+        setUnverified(true);
+        setError("Please verify your email before signing in.");
+      } else {
+        setError("Invalid email or password");
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleSignIn = () => {
-    if (data.email === "adminnextjs@gmail.com" && data.password === "1234567890") {
-      RouteChange();
-    } else {
-      setError("Invalid email or password");
-      setData({
-        email: "adminnextjs@gmail.com",
-        password: "1234567890",
-      });
+  const handleResend = async () => {
+    try {
+      await resendVerification(email);
+      setError("Verification email sent. Check your inbox.");
+      setUnverified(false);
+    } catch {
+      setError("Could not resend verification email.");
     }
   };
 
@@ -44,7 +60,7 @@ export default function Home() {
           <div className="xxl:col-span-4 xl:col-span-4 lg:col-span-4 md:col-span-6 sm:col-span-8 col-span-12">
             <div className="box !p-[3rem]">
               <div className="flex justify-center mb-6">
-                <Link href="/active-leads/" aria-label="Religence home">
+                <Link href="/" aria-label="Religence home">
                   <BrandLogo auth />
                 </Link>
               </div>
@@ -57,6 +73,15 @@ export default function Home() {
                     role="alert"
                   >
                     {err}
+                    {unverified && (
+                      <button
+                        type="button"
+                        onClick={handleResend}
+                        className="ms-1 underline font-medium"
+                      >
+                        Resend verification email
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -102,7 +127,7 @@ export default function Home() {
                         ></i>
                       </button>
                     </div>
-                    <div className="mt-2">
+                    <div className="mt-2 flex items-center justify-between">
                       <div className="form-check !ps-0">
                         <input
                           className="form-check-input"
@@ -117,16 +142,31 @@ export default function Home() {
                           Remember password ?
                         </label>
                       </div>
+                      <Link
+                        href="/forgot-password/"
+                        className="text-primary text-sm font-medium"
+                      >
+                        Forgot password?
+                      </Link>
                     </div>
                   </div>
                   <div className="xl:col-span-12 col-span-12 grid mt-0">
                     <button
                       onClick={handleSignIn}
-                      className="ti-btn ti-btn-primary !bg-primary !text-white !font-medium"
+                      disabled={busy}
+                      className="ti-btn ti-btn-primary !bg-primary !text-white !font-medium disabled:opacity-60"
                     >
-                      Sign In
+                      {busy ? "Signing in…" : "Sign In"}
                     </button>
                   </div>
+                </div>
+                <div className="text-center mt-4">
+                  <p className="text-[#8c9097] dark:text-white/50 text-sm">
+                    Don&apos;t have an account?{" "}
+                    <Link href="/register/" className="text-primary font-medium">
+                      Create one
+                    </Link>
+                  </p>
                 </div>
               </div>
             </div>

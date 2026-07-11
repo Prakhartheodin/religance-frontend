@@ -15,13 +15,10 @@ export default function LeadScoreBadge({ score }: { score: number }) {
   const tier = getLeadScoreTier(score);
   return (
     <span
-      className={`badge leading-none ${TIER_CLASSES[tier]} font-medium`}
-      title={getLeadScoreLabel(tier)}
+      className={`badge leading-none whitespace-nowrap ${TIER_CLASSES[tier]} font-medium`}
+      title={`${score} · ${getLeadScoreLabel(tier)}`}
     >
       {score}
-      <span className="text-[0.65rem] opacity-80 ms-1 hidden sm:inline">
-        · {getLeadScoreLabel(tier)}
-      </span>
     </span>
   );
 }

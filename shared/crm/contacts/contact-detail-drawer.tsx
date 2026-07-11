@@ -16,6 +16,7 @@ import SimpleBar from "simplebar-react";
 type ContactDetailDrawerProps = {
   row: EnrichedContact | null;
   onClose: () => void;
+  onDelete?: (row: EnrichedContact) => void;
   onSelectLead: (lead: CrmLead) => void;
 };
 
@@ -57,6 +58,7 @@ function DrawerField({
 export function ContactDetailDrawer({
   row,
   onClose,
+  onDelete,
   onSelectLead,
 }: ContactDetailDrawerProps) {
   const open = row !== null;
@@ -149,9 +151,19 @@ export function ContactDetailDrawer({
                 className="saved-contacts-drawer-action"
                 onClick={onClose}
               >
-                <i className="ri-target-lock-line"></i>
+                <i className="ri-focus-3-line"></i>
                 <span>View leads</span>
               </Link>
+            ) : null}
+            {onDelete ? (
+              <button
+                type="button"
+                className="saved-contacts-drawer-action saved-contacts-drawer-action--danger"
+                onClick={() => onDelete(row)}
+              >
+                <i className="ri-delete-bin-line"></i>
+                <span>Delete contact</span>
+              </button>
             ) : null}
           </div>
         </div>

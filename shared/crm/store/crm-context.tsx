@@ -1,5 +1,6 @@
 "use client";
 
+import { isAuthed } from "@/shared/auth/auth-client";
 import type { CompanyProfileDetail } from "@/shared/crm/lead-discovery/company-profile-types";
 import {
   createContext,
@@ -7,6 +8,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -57,6 +59,26 @@ import {
   stageAfterSendEmail,
   todayIso,
 } from "./workflow";
+import {
+  getBackendMedicines,
+  getBackendSalts,
+  getOutlookConnectUrl,
+  getOutlookThread,
+  listBackendMasterData,
+  listOutlookAccounts,
+  listOutlookThreads,
+  type OutlookAccount,
+  type OutlookThreadItem,
+  saveBackendMedicines,
+  saveBackendSalts,
+  sendOutlookMessage,
+} from "./outlook-api";
+import { getBackendContacts, saveBackendContacts } from "./contacts-api";
+import { getBackendCompanies, saveBackendCompanies } from "./companies-api";
+import { getBackendLeads, saveBackendLeads } from "./leads-api";
+import { getBackendDeals, saveBackendDeals } from "./deals-api";
+import { isDemoCrmLeads } from "@/shared/crm/store/demo-crm";
+import { getBackendTimeline, saveBackendTimeline } from "./timeline-api";
 
 export type SaveFromDiscoveryInput = {
   profile: CompanyProfileDetail;
@@ -80,6 +102,7 @@ export type SendCrmEmailInput = {
 
 type CrmContextValue = CrmState & {
   hydrated: boolean;
+  masterDataSynced: boolean;
   saveFromDiscovery: (input: SaveFromDiscoveryInput) => {
     companyId: string;
     contactId: string | null;
@@ -100,8 +123,14 @@ type CrmContextValue = CrmState & {
   sendCrmEmail: (input: SendCrmEmailInput) => void;
   linkEmailToLead: (emailId: string, leadId: string) => void;
   connectGmail: () => void;
+  syncOutlookInbox: (
+    preferredAccountId?: string | null,
+    preferredEmail?: string | null
+  ) => Promise<void>;
+  switchOutlookAccount: (accountId: string) => Promise<void>;
   getCompany: (id: string) => CrmCompany | undefined;
   getContact: (id: string) => CrmContact | undefined;
+  deleteContact: (id: string) => void;
   getLead: (id: string) => CrmLead | undefined;
   getLeadEmails: (leadId: string) => CrmEmail[];
   getLeadTimeline: (leadId: string) => CrmTimelineEvent[];
@@ -111,6 +140,7 @@ type CrmContextValue = CrmState & {
     id: string,
     patch: Partial<Omit<EmailTemplate, "id">>
   ) => void;
+  replaceEmailTemplates: (templates: EmailTemplate[]) => void;
   addEmailTemplate: () => string;
   deleteEmailTemplate: (id: string) => void;
   resetEmailTemplate: (id: string) => void;
@@ -142,21 +172,223 @@ function appendTimeline(
   return [{ ...event, id: generateCrmId("tl") }, ...timeline];
 }
 
+function extractEmailAddress(raw: string): string {
+  const s = String(raw || "").trim();
+  const m = s.match(/<([^>]+)>/);
+  return (m ? m[1] : s).trim().toLowerCase();
+}
+
 export function CrmProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CrmState>(() => loadCrmState());
   const [hydrated, setHydrated] = useState(false);
+  const importedMasterLoadedRef = useRef(false);
+  const masterSyncedRef = useRef(false);
+  const crmLoadedRef = useRef(false);
+  const crmSyncedRef = useRef(false);
+  const [masterDataSynced, setMasterDataSynced] = useState(false);
   const [pendingComposeLeadId, setPendingComposeLeadId] = useState<
     string | null
   >(null);
 
   useEffect(() => {
-    setState(loadCrmState());
+    const loaded = loadCrmState();
+    if (isAuthed()) {
+      loaded.salts = [];
+      loaded.medicines = [];
+    }
+    setState(loaded);
     setHydrated(true);
   }, []);
 
   useEffect(() => {
     if (hydrated) saveCrmState(state);
   }, [state, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || importedMasterLoadedRef.current) return;
+    importedMasterLoadedRef.current = true;
+    let active = true;
+
+    const syncMasterData = async () => {
+      if (!isAuthed()) return;
+
+      const result = await listBackendMasterData(true);
+      if (!active) return;
+
+      if (result.live) {
+        const excelSalts = result.data.salts
+          .map((salt) => ({
+            id: String(salt.id || "").trim(),
+            name: String(salt.name || "").trim(),
+          }))
+          .filter((salt) => salt.id && salt.name);
+        const saltIdSet = new Set(excelSalts.map((salt) => salt.id));
+        const excelMedicines = result.data.medicines
+          .map((medicine) => ({
+            id: String(medicine.id || "").trim(),
+            saltId: String(medicine.saltId || "").trim(),
+            name: String(medicine.name || "").trim(),
+            dosageForm: String(medicine.dosageForm || "").trim() || "API",
+          }))
+          .filter(
+            (medicine) =>
+              medicine.id &&
+              medicine.name &&
+              medicine.saltId &&
+              saltIdSet.has(medicine.saltId)
+          );
+
+        if (excelSalts.length && excelMedicines.length) {
+          await Promise.all([
+            saveBackendSalts(excelSalts),
+            saveBackendMedicines(excelMedicines),
+          ]);
+          if (!active) return;
+          setState((prev) => ({
+            ...prev,
+            salts: excelSalts,
+            medicines: excelMedicines,
+          }));
+          masterSyncedRef.current = true;
+          setMasterDataSynced(true);
+          return;
+        }
+      }
+
+      // Fallback: keep whatever is already in Mongo.
+      const [saltsRes, medsRes] = await Promise.all([
+        getBackendSalts(),
+        getBackendMedicines(),
+      ]);
+      if (!active) return;
+
+      const backendSalts = saltsRes.live ? saltsRes.data : [];
+      const backendMedicines = medsRes.live ? medsRes.data : [];
+      if (backendSalts.length && backendMedicines.length) {
+        setState((prev) => ({
+          ...prev,
+          salts: backendSalts,
+          medicines: backendMedicines,
+        }));
+      }
+      masterSyncedRef.current = true;
+      setMasterDataSynced(true);
+    };
+
+    void syncMasterData();
+    return () => {
+      active = false;
+    };
+  }, [hydrated]);
+
+  // Persist salt/medicine edits to Mongo once the initial sync has run.
+  useEffect(() => {
+    if (masterSyncedRef.current) void saveBackendSalts(state.salts);
+  }, [state.salts]);
+
+  useEffect(() => {
+    if (masterSyncedRef.current) void saveBackendMedicines(state.medicines);
+  }, [state.medicines]);
+
+  // Mongo is the source of truth for the CRM entities
+  // (companies/contacts/leads/deals/timeline). Each has its own model/service;
+  // pull all five once on hydrate. If a user has no server doc for an entity
+  // yet, seed it from whatever is in local state.
+  useEffect(() => {
+    if (!hydrated || crmLoadedRef.current) return;
+    crmLoadedRef.current = true;
+    let active = true;
+
+    const syncCrm = async () => {
+      const [companiesRes, contactsRes, leadsRes, dealsRes, timelineRes] =
+        await Promise.all([
+          getBackendCompanies(),
+          getBackendContacts(),
+          getBackendLeads(),
+          getBackendDeals(),
+          getBackendTimeline(),
+        ]);
+      if (!active) return;
+
+      // Server is source of truth. Empty backend → start empty (no mock seed).
+      // Legacy demo rows (*.example.com) are cleared once on load.
+      const emptyGraph = {
+        companies: [] as CrmCompany[],
+        contacts: [] as CrmContact[],
+        leads: [] as CrmLead[],
+        deals: [] as CrmDeal[],
+        timeline: [] as CrmTimelineEvent[],
+      };
+
+      let companies = companiesRes.live ? companiesRes.data : emptyGraph.companies;
+      let contacts = contactsRes.live ? contactsRes.data : emptyGraph.contacts;
+      let leads = leadsRes.live ? leadsRes.data : emptyGraph.leads;
+      let deals = dealsRes.live ? dealsRes.data : emptyGraph.deals;
+      let timeline = timelineRes.live ? timelineRes.data : emptyGraph.timeline;
+
+      if (isDemoCrmLeads(leads)) {
+        companies = [];
+        contacts = [];
+        leads = [];
+        deals = [];
+        timeline = [];
+        await Promise.all([
+          saveBackendCompanies([]),
+          saveBackendContacts([]),
+          saveBackendLeads([]),
+          saveBackendDeals([]),
+          saveBackendTimeline([]),
+        ]);
+      }
+
+      setState((prev) => ({
+        ...prev,
+        companies,
+        contacts,
+        leads,
+        deals,
+        timeline,
+      }));
+      if (!active) return;
+      crmSyncedRef.current = true;
+    };
+
+    void syncCrm();
+    return () => {
+      active = false;
+    };
+  }, [hydrated]);
+
+  // Persist entity edits to Mongo (debounced) once the initial sync has run.
+  useEffect(() => {
+    if (!crmSyncedRef.current) return;
+    const t = window.setTimeout(() => void saveBackendCompanies(state.companies), 800);
+    return () => window.clearTimeout(t);
+  }, [state.companies]);
+
+  useEffect(() => {
+    if (!crmSyncedRef.current) return;
+    const t = window.setTimeout(() => void saveBackendContacts(state.contacts), 800);
+    return () => window.clearTimeout(t);
+  }, [state.contacts]);
+
+  useEffect(() => {
+    if (!crmSyncedRef.current) return;
+    const t = window.setTimeout(() => void saveBackendLeads(state.leads), 800);
+    return () => window.clearTimeout(t);
+  }, [state.leads]);
+
+  useEffect(() => {
+    if (!crmSyncedRef.current) return;
+    const t = window.setTimeout(() => void saveBackendDeals(state.deals), 800);
+    return () => window.clearTimeout(t);
+  }, [state.deals]);
+
+  useEffect(() => {
+    if (!crmSyncedRef.current) return;
+    const t = window.setTimeout(() => void saveBackendTimeline(state.timeline), 800);
+    return () => window.clearTimeout(t);
+  }, [state.timeline]);
 
   const patch = useCallback((fn: (prev: CrmState) => CrmState) => {
     setState(fn);
@@ -344,6 +576,19 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     [patch]
   );
 
+  const deleteContact = useCallback(
+    (id: string) => {
+      patch((prev) => ({
+        ...prev,
+        contacts: prev.contacts.filter((c) => c.id !== id),
+        leads: prev.leads.map((l) =>
+          l.contactId === id ? { ...l, contactId: null } : l
+        ),
+      }));
+    },
+    [patch]
+  );
+
   const setLeadStage = useCallback(
     (leadId: string, stage: LeadStage) => {
       patch((prev) => {
@@ -470,6 +715,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         leadId: lead.id,
         threadId: generateCrmId("thread"),
         direction: "outbound",
+        mailboxLabels: ["SENT"],
         subject: input.subject,
         body: input.body,
         preview: input.body.slice(0, 120),
@@ -520,13 +766,23 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         leadId: lead?.id ?? null,
         threadId: generateCrmId("thread"),
         direction: "outbound",
+        mailboxLabels: ["SENT"],
         subject: input.subject,
         body: input.body,
         preview: input.body.slice(0, 120),
-        fromEmail: "sales@religence.example.com",
+        fromEmail: state.outlookEmail ?? "sales@religence.example.com",
         toEmail: input.toEmail,
         sentAt: todayIso(),
       };
+
+      if (state.gmailConnected && state.outlookAccountId) {
+        void sendOutlookMessage({
+          accountId: state.outlookAccountId,
+          to: input.toEmail,
+          subject: input.subject,
+          html: input.body.replace(/\n/g, "<br/>"),
+        });
+      }
 
       patch((prev) => {
         if (!lead) {
@@ -556,7 +812,13 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         };
       });
     },
-    [patch, state.leads]
+    [
+      patch,
+      state.gmailConnected,
+      state.leads,
+      state.outlookAccountId,
+      state.outlookEmail,
+    ]
   );
 
   const linkEmailToLead = useCallback(
@@ -600,49 +862,185 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     [patch]
   );
 
-  const connectGmail = useCallback(() => {
-    patch((prev) => {
-      const firstLead = prev.leads[0];
-      const demoInbound: CrmEmail[] = [
-        {
-          id: generateCrmId("em"),
+  const syncOutlookInbox = useCallback(
+    async (preferredAccountId?: string | null, preferredEmail?: string | null) => {
+      const accountsRes = await listOutlookAccounts();
+      if (!accountsRes.live) return;
+      const accounts: OutlookAccount[] = [...accountsRes.data];
+      const preferredEmailNorm = (preferredEmail ?? "").trim().toLowerCase();
+      const account =
+        (preferredAccountId
+          ? accounts.find((a) => a.id === preferredAccountId)
+          : null) ??
+        (preferredEmailNorm
+          ? accounts.find((a) => a.email.toLowerCase() === preferredEmailNorm)
+          : null) ??
+        (state.outlookAccountId
+          ? accounts.find((a) => a.id === state.outlookAccountId)
+          : null) ??
+        accounts.find((a) => a.status === "active") ??
+        accounts[0];
+      if (!account) {
+        patch((prev) => ({
+          ...prev,
+          gmailConnected: false,
+          outlookAccountId: null,
+          outlookEmail: null,
+          outlookAccounts: [],
+          emails: [],
+        }));
+        return;
+      }
+
+      const folderSources = [
+        { labelId: "INBOX", mailboxLabel: "INBOX" },
+        { labelId: "SENT", mailboxLabel: "SENT" },
+        { labelId: "JUNK", mailboxLabel: "JUNK" },
+      ] as const;
+      const threadBuckets = new Map<
+        string,
+        { thread: OutlookThreadItem; mailboxLabels: Set<string> }
+      >();
+
+      for (const source of folderSources) {
+        const folderThreadsRes = await listOutlookThreads(
+          account.id,
+          25,
+          source.labelId
+        );
+        if (!folderThreadsRes.live) continue;
+        for (const thread of folderThreadsRes.data.threads) {
+          const key = thread.threadId || thread.id;
+          const existing = threadBuckets.get(key);
+          if (!existing) {
+            threadBuckets.set(key, {
+              thread,
+              mailboxLabels: new Set([source.mailboxLabel]),
+            });
+            continue;
+          }
+          existing.mailboxLabels.add(source.mailboxLabel);
+          const existingDate = existing.thread.date ?? "";
+          const incomingDate = thread.date ?? "";
+          if (incomingDate > existingDate) {
+            existing.thread = thread;
+          }
+        }
+      }
+
+      if (threadBuckets.size === 0) {
+        const allThreadsRes = await listOutlookThreads(account.id, 25);
+        if (!allThreadsRes.live) {
+          patch((prev) => ({
+            ...prev,
+            gmailConnected: true,
+            outlookAccountId: account.id,
+            outlookEmail: account.email,
+            outlookAccounts: accounts,
+            emails: [],
+          }));
+          return;
+        }
+        for (const thread of allThreadsRes.data.threads) {
+          const key = thread.threadId || thread.id;
+          threadBuckets.set(key, {
+            thread,
+            mailboxLabels: new Set<string>(),
+          });
+        }
+      }
+
+      const accountEmail = account.email.toLowerCase();
+      const rankedThreads = [...threadBuckets.values()]
+        .sort((a, b) => {
+          const ta = new Date(a.thread.date ?? 0).getTime();
+          const tb = new Date(b.thread.date ?? 0).getTime();
+          return tb - ta;
+        })
+        .slice(0, 25);
+
+      const syncedEmails: CrmEmail[] = [];
+      for (const item of rankedThreads) {
+        const threadId = item.thread.threadId || item.thread.id;
+        const detailRes = await getOutlookThread(account.id, threadId);
+        const messages = detailRes.live ? [...detailRes.data.messages] : [];
+        messages.sort((a, b) => {
+          const ta = new Date(a.date ?? 0).getTime();
+          const tb = new Date(b.date ?? 0).getTime();
+          return ta - tb;
+        });
+
+        const latestMessage =
+          messages.length > 0 ? messages[messages.length - 1] : null;
+        const hasOutbound = messages.some(
+          (message) => extractEmailAddress(message.from) === accountEmail
+        );
+        const hasInbound = messages.some((message) => {
+          const from = extractEmailAddress(message.from);
+          return Boolean(from) && from !== accountEmail;
+        });
+
+        const mailboxLabels = new Set(item.mailboxLabels);
+        if (hasInbound) mailboxLabels.add("INBOX");
+        if (hasOutbound) mailboxLabels.add("SENT");
+
+        const fromRaw = latestMessage?.from ?? item.thread.from;
+        const toRaw = latestMessage?.to ?? item.thread.to;
+        const fromEmail = extractEmailAddress(fromRaw);
+        const toEmail = extractEmailAddress(toRaw) || accountEmail;
+        const body =
+          latestMessage?.textBody ??
+          latestMessage?.htmlBody ??
+          latestMessage?.snippet ??
+          item.thread.snippet ??
+          "";
+        const preview = (
+          latestMessage?.snippet ??
+          item.thread.snippet ??
+          body
+        ).slice(0, 120);
+
+        syncedEmails.push({
+          id: latestMessage?.id ?? `outlook-${threadId}`,
           leadId: null,
-          threadId: generateCrmId("thread"),
-          direction: "inbound",
-          subject: "Re: Budesonide supply enquiry",
-          body: "Thanks for your introduction. Please share COA and pricing for respules.\n\nWe are evaluating monthly volumes of 50k units. Kindly confirm lead time.",
-          preview:
-            "Thanks for your introduction. Please share COA and pricing for respules.",
-          fromEmail: "rajesh.mehta@abcpharma.example.com",
-          toEmail: "sales@religence.example.com",
-          sentAt: todayIso(),
-        },
-        {
-          id: generateCrmId("em"),
-          leadId: firstLead?.id ?? null,
-          threadId: generateCrmId("thread"),
-          direction: "inbound",
-          subject: "Sample request — Metformin 500mg",
-          body: "Please dispatch 2 sample batches for stability review. Our QA team will revert within 5 business days.",
-          preview:
-            "Please dispatch 2 sample batches for stability review.",
-          fromEmail: firstLead?.contactEmail ?? "qa@client.example.com",
-          toEmail: "sales@religence.example.com",
-          sentAt: todayIso(),
-        },
-      ];
-      const hasUnlinkedInbound = prev.emails.some(
-        (e) => e.leadId === null && e.direction === "inbound"
-      );
-      return {
+          threadId,
+          direction: hasInbound ? "inbound" : "outbound",
+          mailboxLabels: [...mailboxLabels],
+          subject: latestMessage?.subject ?? item.thread.subject ?? "(No subject)",
+          body,
+          preview,
+          fromEmail: fromEmail || accountEmail,
+          toEmail,
+          sentAt: latestMessage?.date ?? item.thread.date ?? todayIso(),
+        });
+      }
+
+      syncedEmails.sort((a, b) => b.sentAt.localeCompare(a.sentAt));
+
+      patch((prev) => ({
         ...prev,
         gmailConnected: true,
-        emails: hasUnlinkedInbound
-          ? prev.emails
-          : [...demoInbound, ...prev.emails],
-      };
-    });
-  }, [patch]);
+        outlookAccountId: account.id,
+        outlookEmail: account.email,
+        outlookAccounts: accounts,
+        emails: syncedEmails,
+      }));
+    },
+    [patch, state.outlookAccountId]
+  );
+
+  const switchOutlookAccount = useCallback(
+    async (accountId: string) => {
+      await syncOutlookInbox(accountId, null);
+    },
+    [syncOutlookInbox]
+  );
+
+  const connectGmail = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.location.href = getOutlookConnectUrl();
+    }
+  }, []);
 
   const resetStore = useCallback(() => {
     setState(resetCrmState());
@@ -656,6 +1054,16 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         emailTemplates: prev.emailTemplates.map((t) =>
           t.id === id ? { ...t, ...tplPatch } : t
         ),
+      }));
+    },
+    [patch]
+  );
+
+  const replaceEmailTemplates = useCallback(
+    (templates: EmailTemplate[]) => {
+      patch((prev) => ({
+        ...prev,
+        emailTemplates: templates.map((tpl) => ({ ...tpl })),
       }));
     },
     [patch]
@@ -930,9 +1338,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       hydrated,
+      masterDataSynced,
       saveFromDiscovery,
       createLeadManual,
       updateLead,
+      deleteContact,
       setLeadStage,
       advanceLeadStage,
       verifyLead,
@@ -943,8 +1353,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       sendCrmEmail,
       linkEmailToLead,
       connectGmail,
+      syncOutlookInbox,
+      switchOutlookAccount,
       getCompany: (id) => state.companies.find((c) => c.id === id),
       getContact: (id) => state.contacts.find((c) => c.id === id),
+      deleteContact,
       getLead: (id) => state.leads.find((l) => l.id === id),
       getLeadEmails: (leadId) =>
         state.emails.filter((e) => e.leadId === leadId),
@@ -962,6 +1375,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         sender_name: CURRENT_USER,
       }),
       updateEmailTemplate,
+      replaceEmailTemplates,
       addEmailTemplate,
       deleteEmailTemplate,
       resetEmailTemplate,
@@ -983,9 +1397,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     [
       state,
       hydrated,
+      masterDataSynced,
       saveFromDiscovery,
       createLeadManual,
       updateLead,
+      deleteContact,
       setLeadStage,
       advanceLeadStage,
       verifyLead,
@@ -996,8 +1412,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       sendCrmEmail,
       linkEmailToLead,
       connectGmail,
+      syncOutlookInbox,
+      switchOutlookAccount,
       findCompanyByDiscoveryId,
       updateEmailTemplate,
+      replaceEmailTemplates,
       addEmailTemplate,
       deleteEmailTemplate,
       resetEmailTemplate,

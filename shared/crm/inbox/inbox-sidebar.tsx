@@ -1,8 +1,6 @@
 "use client";
 
 import { CURRENT_USER } from "@/shared/crm/store/types";
-import type { CrmContact } from "@/shared/crm/store/types";
-import Link from "next/link";
 import {
   INBOX_FOLDERS,
   INBOX_LABELS,
@@ -13,6 +11,7 @@ import { InboxAvatar } from "./inbox-avatar";
 
 export function InboxSidebar({
   gmailConnected,
+  accountEmail,
   onConnect,
   onCompose,
   activeFolder,
@@ -20,9 +19,9 @@ export function InboxSidebar({
   folderCounts,
   activeTag,
   onTagChange,
-  onlineContacts,
 }: {
   gmailConnected: boolean;
+  accountEmail: string | null;
   onConnect: () => void;
   onCompose: () => void;
   activeFolder: InboxFolderName;
@@ -30,7 +29,6 @@ export function InboxSidebar({
   folderCounts: Partial<Record<InboxFolderName, number>>;
   activeTag: InboxTag | null;
   onTagChange: (tag: InboxTag | null) => void;
-  onlineContacts: CrmContact[];
 }) {
   return (
     <aside className="crm-inbox-sidebar">
@@ -51,8 +49,8 @@ export function InboxSidebar({
             <p className="crm-inbox-profile-name">{CURRENT_USER}</p>
             <p className="crm-inbox-profile-email">
               {gmailConnected
-                ? "sales@religence.example.com"
-                : "Connect Gmail to sync"}
+                ? accountEmail ?? "Outlook connected"
+                : "Connect Outlook to sync"}
             </p>
           </div>
         </div>
@@ -63,8 +61,8 @@ export function InboxSidebar({
             className="crm-inbox-connect-btn"
             onClick={onConnect}
           >
-            <i className="ri-google-fill me-1"></i>
-            Connect Gmail
+            <i className="ri-microsoft-fill me-1"></i>
+            Connect Outlook
           </button>
         )}
 
@@ -116,21 +114,6 @@ export function InboxSidebar({
         </div>
       </div>
 
-      <div className="crm-inbox-online-users">
-        <p className="crm-inbox-nav-title">Online Users</p>
-        <div className="crm-inbox-online-list">
-          {onlineContacts.slice(0, 6).map((ct, i) => (
-            <span
-              key={ct.id}
-              className="crm-inbox-online-avatar"
-              title={ct.name}
-            >
-              <InboxAvatar name={ct.name} size="sm" />
-              {i < 4 && <span className="crm-inbox-online-dot" />}
-            </span>
-          ))}
-        </div>
-      </div>
     </aside>
   );
 }

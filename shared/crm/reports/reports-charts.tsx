@@ -202,16 +202,16 @@ export function RevenueAnalyticsChart({ report }: { report: ReportsSnapshot }) {
       },
       yaxis: {
         labels: {
-          formatter: (value: number) => `$${value}`,
+          formatter: (value: number) => `${Math.round(value)}`,
         },
       },
       legend: {
         show: true,
-        customLegendItems: ["Profit", "Revenue", "Sales"],
+        customLegendItems: ["Deals Won", "Replies", "Emails Sent"],
         inverseOrder: true,
       },
       title: {
-        text: "Revenue Analytics with sales & profit (USD)",
+        text: "Outreach activity by month (live counts)",
         align: "left",
         style: {
           fontSize: ".8125rem",
@@ -224,9 +224,9 @@ export function RevenueAnalyticsChart({ report }: { report: ReportsSnapshot }) {
       },
       tooltip: {
         y: [
-          { formatter: (v: number) => `$${v.toFixed(0)}` },
-          { formatter: (v: number) => `$${v.toFixed(0)}` },
-          { formatter: (v: number) => `${v.toFixed(0)}` },
+          { formatter: (v: number) => `${v} deals` },
+          { formatter: (v: number) => `${v} replies` },
+          { formatter: (v: number) => `${v} emails` },
         ],
       },
     }),
@@ -234,16 +234,16 @@ export function RevenueAnalyticsChart({ report }: { report: ReportsSnapshot }) {
   );
 
   return (
-    <div id="crm-revenue-analytics">
+    <div id="crm-revenue-analytics" className="w-full min-w-[280px]">
       <ApexChart
         type="line"
         height={350}
         width="100%"
         options={options}
         series={[
-          { name: "Profit", type: "line", data: profit },
-          { name: "Revenue", type: "line", data: revenue },
-          { name: "Sales", type: "area", data: sales },
+          { name: "Deals Won", type: "line", data: profit },
+          { name: "Replies", type: "line", data: revenue },
+          { name: "Emails Sent", type: "area", data: sales },
         ]}
       />
     </div>
@@ -300,8 +300,8 @@ export function ProfitEarnedChart({
         width="100%"
         options={options}
         series={[
-          { name: "Profit Earned", data: primary },
-          { name: "Total Sales", data: secondary },
+          { name: "New leads", data: primary },
+          { name: "Emails", data: secondary },
         ]}
       />
     </div>
@@ -362,7 +362,7 @@ export function PipelineOverviewChart({ report }: { report: ReportsSnapshot }) {
   );
 
   return (
-    <div id="pipeline-overview">
+    <div id="pipeline-overview" className="w-full min-w-[280px]">
       <ApexChart
         type="bar"
         height={325}

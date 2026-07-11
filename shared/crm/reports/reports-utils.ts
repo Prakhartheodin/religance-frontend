@@ -3,6 +3,7 @@ import {
   LEAD_STAGES,
 } from "@/shared/crm/active-leads/lead-stages";
 import type {
+  CrmCompany,
   CrmContact,
   CrmDeal,
   CrmEmail,
@@ -166,7 +167,7 @@ export type ReportsSnapshot = {
     dealsWon: number[];
   };
   recentContacts: RecentContactRow[];
-  stageBreakdown: { stage: string; count: number; badgeBg: string }[];
+  stageBreakdown: { stage: string; count: number; badgeClass: string }[];
   assigneeBreakdown: { name: string; active: number; total: number }[];
   topSalts: SaltCategoryRow[];
   pipelineRows: PipelineTableRow[];
@@ -249,6 +250,30 @@ function buildSparkline(values: number[], points = 8): number[] {
   return slice.map((v) => Math.round((v / max) * 100));
 }
 
+function currentMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function previousMonthKey(): string {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function pctChange(current: number, previous: number): number {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function countByMonthKey<T>(
+  items: T[],
+  getDate: (item: T) => string,
+  key: string
+): number {
+  return items.filter((item) => monthKey(getDate(item)) === key).length;
+}
+
 function buildMonthlyBuckets(count: number): { key: string; label: string }[] {
   const buckets: { key: string; label: string }[] = [];
   const now = new Date();
@@ -320,12 +345,9 @@ function buildRevenueAnalytics(emails: CrmEmail[], leads: CrmLead[]) {
 
   return {
     categories: buckets.map((b) => b.label),
-    sales: buckets.map((b) => (sentMap.get(b.key) ?? 0) * 12),
-    revenue: buckets.map((b) => (replyMap.get(b.key) ?? 0) * 28),
-    profit: buckets.map(
-      (b) =>
-        (wonMap.get(b.key) ?? 0) * 85 + (replyMap.get(b.key) ?? 0) * 8
-    ),
+    sales: buckets.map((b) => sentMap.get(b.key) ?? 0),
+    revenue: buckets.map((b) => replyMap.get(b.key) ?? 0),
+    profit: buckets.map((b) => wonMap.get(b.key) ?? 0),
   };
 }
 
@@ -360,21 +382,19 @@ function buildPipelineOverview(leads: CrmLead[], emails: CrmEmail[]) {
 
 function buildWeeklyProfit(leads: CrmLead[], emails: CrmEmail[]) {
   const labels = ["S", "M", "T", "W", "T", "F", "S"];
-  const primary = [0, 0, 0, 0, 0, 0, 0];
-  const secondary = [0, 0, 0, 0, 0, 0, 0];
+  const leadActivity = [0, 0, 0, 0, 0, 0, 0];
+  const emailActivity = [0, 0, 0, 0, 0, 0, 0];
 
-  const bump = (iso: string, idx: number) => {
+  const bump = (iso: string, bucket: number[]) => {
     const d = new Date(iso.includes("T") ? iso : `${iso}T12:00:00`);
     if (Number.isNaN(d.getTime())) return;
-    const day = d.getDay();
-    primary[day] += idx;
-    secondary[day] += Math.max(1, Math.floor(idx * 0.45));
+    bucket[d.getDay()] += 1;
   };
 
-  for (const lead of leads) bump(lead.createdAt, 2);
-  for (const email of emails) bump(email.sentAt, 1);
+  for (const lead of leads) bump(lead.createdAt, leadActivity);
+  for (const email of emails) bump(email.sentAt, emailActivity);
 
-  return { labels, primary, secondary };
+  return { labels, primary: leadActivity, secondary: emailActivity };
 }
 
 function buildTopDeals(leads: CrmLead[], deals: CrmDeal[]): TopDealRow[] {
@@ -399,13 +419,14 @@ function buildTopDeals(leads: CrmLead[], deals: CrmDeal[]): TopDealRow[] {
   }
 
   return [...leads]
+    .filter((l) => l.stage === "Won" || l.leadScore > 0)
     .sort((a, b) => b.leadScore - a.leadScore)
     .slice(0, 5)
     .map((l, idx) => ({
       id: l.id,
       name: l.contactName,
       email: l.contactEmail,
-      amount: `$${(l.leadScore * 42 + 1200).toLocaleString("en-US")}`,
+      amount: `Score ${l.leadScore}`,
       initials: initials(l.contactName),
       avatarHue: hueFromString(l.contactName),
       avatarClass: AVATAR_CLASSES[idx % AVATAR_CLASSES.length],
@@ -414,7 +435,7 @@ function buildTopDeals(leads: CrmLead[], deals: CrmDeal[]): TopDealRow[] {
 
 export function buildReportsSnapshot(
   leads: CrmLead[],
-  companies: { length: number },
+  companies: CrmCompany[],
   contacts: CrmContact[],
   emails: CrmEmail[],
   deals: CrmDeal[],
@@ -454,6 +475,92 @@ export function buildReportsSnapshot(
   const monthlyDeals = buildMonthlyBuckets(8).map((b) =>
     deals.filter((d) => monthKey(d.createdAt) === b.key).length
   );
+  const monthlyContacts = buildMonthlyBuckets(8).map((b) =>
+    contacts.filter((c) => monthKey(c.createdAt) === b.key).length
+  );
+  const monthlyCompanies = buildMonthlyBuckets(8).map((b) =>
+    companies.filter((c) => monthKey(c.createdAt) === b.key).length
+  );
+
+  const thisMonth = currentMonthKey();
+  const lastMonth = previousMonthKey();
+
+  const leadsThisMonth = countByMonthKey(leads, (l) => l.createdAt, thisMonth);
+  const leadsLastMonth = countByMonthKey(leads, (l) => l.createdAt, lastMonth);
+  const outboundThisMonth = countByMonthKey(
+    emails.filter((e) => e.direction === "outbound"),
+    (e) => e.sentAt,
+    thisMonth
+  );
+  const outboundLastMonth = countByMonthKey(
+    emails.filter((e) => e.direction === "outbound"),
+    (e) => e.sentAt,
+    lastMonth
+  );
+  const inboundThisMonth = countByMonthKey(
+    emails.filter((e) => e.direction === "inbound"),
+    (e) => e.sentAt,
+    thisMonth
+  );
+  const inboundLastMonth = countByMonthKey(
+    emails.filter((e) => e.direction === "inbound"),
+    (e) => e.sentAt,
+    lastMonth
+  );
+  const replyRateThisMonth =
+    outboundThisMonth > 0
+      ? Math.round((inboundThisMonth / outboundThisMonth) * 100)
+      : 0;
+  const replyRateLastMonth =
+    outboundLastMonth > 0
+      ? Math.round((inboundLastMonth / outboundLastMonth) * 100)
+      : 0;
+  const wonThisMonth = leads.filter(
+    (l) => l.stage === "Won" && monthKey(l.lastActivity || l.createdAt) === thisMonth
+  ).length;
+  const wonLastMonth = leads.filter(
+    (l) => l.stage === "Won" && monthKey(l.lastActivity || l.createdAt) === lastMonth
+  ).length;
+  const contactsThisMonth = countByMonthKey(
+    contacts,
+    (c) => c.createdAt,
+    thisMonth
+  );
+  const contactsLastMonth = countByMonthKey(
+    contacts,
+    (c) => c.createdAt,
+    lastMonth
+  );
+  const dealsThisMonth = countByMonthKey(deals, (d) => d.createdAt, thisMonth);
+  const dealsLastMonth = countByMonthKey(deals, (d) => d.createdAt, lastMonth);
+
+  const verifiedThisMonth = leads.filter(
+    (l) =>
+      !["Saved"].includes(l.stage) &&
+      l.stage !== "Lost" &&
+      l.stage !== "Dormant" &&
+      monthKey(l.createdAt) === thisMonth
+  ).length;
+  const verifiedLastMonth = leads.filter(
+    (l) =>
+      !["Saved"].includes(l.stage) &&
+      l.stage !== "Lost" &&
+      l.stage !== "Dormant" &&
+      monthKey(l.createdAt) === lastMonth
+  ).length;
+  const conversionThisMonth =
+    leadsThisMonth > 0
+      ? Math.round((verifiedThisMonth / leadsThisMonth) * 100)
+      : 0;
+  const conversionLastMonth =
+    leadsLastMonth > 0
+      ? Math.round((verifiedLastMonth / leadsLastMonth) * 100)
+      : 0;
+
+  const activeLeadsChange = pctChange(leadsThisMonth, leadsLastMonth);
+  const emailsSentChange = pctChange(outboundThisMonth, outboundLastMonth);
+  const replyRateChange = replyRateThisMonth - replyRateLastMonth;
+  const wonDealsChange = pctChange(wonThisMonth, wonLastMonth);
 
   const salesStats: SalesStatCard[] = [
     {
@@ -461,8 +568,8 @@ export function buildReportsSnapshot(
       title: "Active Leads",
       value: formatCount(activeLeads),
       period: "IN PIPELINE",
-      change: activeLeads > 0 ? 42 : 0,
-      changePositive: true,
+      change: activeLeadsChange,
+      changePositive: activeLeadsChange >= 0,
       href: "/active-leads",
       icon: "ri-pulse-line",
     },
@@ -471,8 +578,8 @@ export function buildReportsSnapshot(
       title: "Emails Sent",
       value: formatCount(outbound),
       period: "OUTREACH",
-      change: replyRate,
-      changePositive: replyRate >= 20,
+      change: emailsSentChange,
+      changePositive: emailsSentChange >= 0,
       href: "/inbox",
       icon: "ri-mail-send-line",
     },
@@ -481,8 +588,8 @@ export function buildReportsSnapshot(
       title: "Reply Rate",
       value: `${replyRate}%`,
       period: "ENGAGEMENT",
-      change: replyRate >= 25 ? 27 : -12,
-      changePositive: replyRate >= 25,
+      change: replyRateChange,
+      changePositive: replyRateChange >= 0,
       href: "/inbox",
       icon: "ri-reply-line",
     },
@@ -491,8 +598,8 @@ export function buildReportsSnapshot(
       title: "Won Deals",
       value: formatCount(won),
       period: "CLOSED WON",
-      change: winRate,
-      changePositive: winRate >= 40,
+      change: wonDealsChange,
+      changePositive: wonDealsChange >= 0,
       href: "/active-leads",
       icon: "ri-trophy-line",
     },
@@ -503,31 +610,34 @@ export function buildReportsSnapshot(
       id: "contacts",
       label: "Total Customers",
       value: formatCount(contacts.length),
-      change: contacts.length > 0 ? 40 : 0,
+      change: pctChange(contactsThisMonth, contactsLastMonth),
       changeLabel: "this month",
       iconBg: "primary",
       linkClass: "text-primary",
       icon: "ti ti-users",
       sparkColor: DASHBOARD_COLORS.purple,
-      sparkline: buildSparkline(monthlyLeads),
+      sparkline: buildSparkline(monthlyContacts),
     },
     {
       id: "companies",
       label: "Total Companies",
       value: formatCount(companies.length),
-      change: companies.length > 0 ? 25 : 0,
+      change: pctChange(
+        countByMonthKey(companies, (c) => c.createdAt, thisMonth),
+        countByMonthKey(companies, (c) => c.createdAt, lastMonth)
+      ),
       changeLabel: "this month",
       iconBg: "secondary",
       linkClass: "text-secondary",
       icon: "ti ti-building",
       sparkColor: DASHBOARD_COLORS.teal,
-      sparkline: buildSparkline(monthlySent),
+      sparkline: buildSparkline(monthlyCompanies),
     },
     {
       id: "conversion",
       label: "Conversion Ratio",
       value: `${targetPercent.toFixed(2)}%`,
-      change: targetPercent >= 50 ? 12 : -12,
+      change: conversionThisMonth - conversionLastMonth,
       changeLabel: "this month",
       iconBg: "success",
       linkClass: "text-success",
@@ -539,7 +649,7 @@ export function buildReportsSnapshot(
       id: "deals",
       label: "Total Deals",
       value: formatCount(Math.max(deals.length, activeLeads)),
-      change: deals.length > 0 ? 19 : 8,
+      change: pctChange(dealsThisMonth, dealsLastMonth),
       changeLabel: "this month",
       iconBg: "warning",
       linkClass: "text-warning",
@@ -771,7 +881,7 @@ export function buildReportsSnapshot(
     topDeals: buildTopDeals(leads, deals),
     dealsStatus: {
       total: statusTotal,
-      weekChange: winRate > 0 ? `+${(winRate / 100).toFixed(2)}` : "+1.02",
+      weekChange: `${winRate >= 0 ? "+" : ""}${winRate}%`,
       segments,
       items: statusItems,
     },

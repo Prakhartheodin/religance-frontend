@@ -16,6 +16,7 @@ import { InboxAvatar } from "@/shared/crm/inbox/inbox-avatar";
 import { SendEmailModal } from "@/shared/crm/send-email/send-email-modal";
 import { useCrm } from "@/shared/crm/store/crm-context";
 import type { CrmLead } from "@/shared/crm/store/types";
+import { ConfirmDeleteOverlay } from "@/shared/crm/ui/confirm-delete-overlay";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useState } from "react";
@@ -30,7 +31,7 @@ const STAT_CARDS = [
 ] as const;
 
 export default function ContactsPage() {
-  const { contacts, companies, leads, hydrated } = useCrm();
+  const { contacts, companies, leads, hydrated, deleteContact } = useCrm();
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [sort, setSort] = useState<ContactSort>("name");
@@ -38,6 +39,9 @@ export default function ContactsPage() {
   const [selectedRow, setSelectedRow] = useState<EnrichedContact | null>(null);
   const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null);
   const [sendLead, setSendLead] = useState<CrmLead | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<EnrichedContact | null>(
+    null
+  );
 
   const enriched = useMemo(
     () => enrichContacts(contacts, companies, leads),
@@ -96,6 +100,19 @@ export default function ContactsPage() {
   };
 
   const openRow = (row: EnrichedContact) => setSelectedRow(row);
+
+  const requestDelete = (row: EnrichedContact) => setPendingDelete(row);
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    deleteContact(pendingDelete.contact.id);
+    if (selectedRow?.contact.id === pendingDelete.contact.id) {
+      setSelectedRow(null);
+    }
+    setPendingDelete(null);
+  };
+
+  const cancelDelete = () => setPendingDelete(null);
 
   if (!hydrated) {
     return (
@@ -231,16 +248,20 @@ export default function ContactsPage() {
                   : "Try a different search or company filter."}
               </p>
               {contacts.length === 0 ? (
-                <Link href="/lead-discovery" className="ti-btn ti-btn-primary ti-btn-sm">
+                <Link
+                  href="/lead-discovery"
+                  className="ti-btn ti-btn-primary saved-contacts-empty-cta"
+                >
                   <i className="ri-compass-3-line me-1"></i>
                   Go to Lead Discovery
                 </Link>
               ) : (
                 <button
                   type="button"
-                  className="ti-btn ti-btn-sm ti-btn-primary"
+                  className="ti-btn ti-btn-primary saved-contacts-empty-cta"
                   onClick={clearFilters}
                 >
+                  <i className="ri-filter-off-line me-1"></i>
                   Clear filters
                 </button>
               )}
@@ -361,6 +382,15 @@ export default function ContactsPage() {
                               >
                                 <i className="ri-arrow-right-s-line"></i>
                               </button>
+                              <button
+                                type="button"
+                                className="saved-contacts-icon-btn saved-contacts-icon-btn--danger"
+                                title="Delete"
+                                aria-label={`Delete ${contact.name}`}
+                                onClick={() => requestDelete(row)}
+                              >
+                                <i className="ri-delete-bin-line"></i>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -426,6 +456,7 @@ export default function ContactsPage() {
       <ContactDetailDrawer
         row={selectedRow}
         onClose={() => setSelectedRow(null)}
+        onDelete={(row) => requestDelete(row)}
         onSelectLead={(lead) => {
           setSelectedRow(null);
           setSelectedLead(lead);
@@ -439,6 +470,17 @@ export default function ContactsPage() {
       />
 
       <SendEmailModal lead={sendLead} onClose={() => setSendLead(null)} />
+
+      <ConfirmDeleteOverlay
+        open={pendingDelete != null}
+        entityName={
+          pendingDelete?.contact.name?.trim() ||
+          pendingDelete?.contact.email ||
+          "this contact"
+        }
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </Fragment>
   );
 }

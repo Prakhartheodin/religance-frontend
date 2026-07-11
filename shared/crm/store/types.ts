@@ -82,6 +82,7 @@ export type CrmEmail = {
   leadId: string | null;
   threadId: string;
   direction: "inbound" | "outbound";
+  mailboxLabels?: string[];
   subject: string;
   body: string;
   preview: string;
@@ -99,6 +100,14 @@ export type CrmTimelineEvent = {
   type: "stage" | "email" | "note" | "call" | "verification" | "deal";
 };
 
+export type OutlookMailboxAccount = {
+  id: string;
+  provider: "outlook";
+  email: string;
+  status: "active" | "revoked" | "error";
+  createdAt: string;
+};
+
 export type CrmState = {
   companies: CrmCompany[];
   contacts: CrmContact[];
@@ -107,6 +116,9 @@ export type CrmState = {
   emails: CrmEmail[];
   timeline: CrmTimelineEvent[];
   gmailConnected: boolean;
+  outlookAccountId?: string | null;
+  outlookEmail?: string | null;
+  outlookAccounts?: OutlookMailboxAccount[];
   emailTemplates: EmailTemplate[];
   salts: SaltMasterItem[];
   medicines: DiscoveryMedicine[];

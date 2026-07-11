@@ -1,19 +1,21 @@
-import { SALT_MASTER_LIST, type SaltMasterItem } from "../lead-discovery/salts";
+export type SaltMasterItem = {
+  id: string;
+  name: string;
+};
 
-export type { SaltMasterItem };
-
-export const DEFAULT_SALTS: SaltMasterItem[] = SALT_MASTER_LIST;
+/** Salts are loaded from Excel via /v1/master-data — no static defaults. */
+export const DEFAULT_SALTS: SaltMasterItem[] = [];
 
 export function cloneDefaultSalts(): SaltMasterItem[] {
-  return SALT_MASTER_LIST.map((s) => ({ ...s }));
+  return [];
 }
 
-export function getDefaultSalt(id: string): SaltMasterItem | undefined {
-  return SALT_MASTER_LIST.find((s) => s.id === id);
+export function getDefaultSalt(_id: string): SaltMasterItem | undefined {
+  return undefined;
 }
 
-export function isDefaultSalt(id: string): boolean {
-  return SALT_MASTER_LIST.some((s) => s.id === id);
+export function isDefaultSalt(_id: string): boolean {
+  return false;
 }
 
 export function createBlankSalt(id: string): SaltMasterItem {

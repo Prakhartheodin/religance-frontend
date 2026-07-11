@@ -313,7 +313,7 @@ export function CompanyProfileDrawer({
                 className="text-primary"
                 onClick={onClose}
               >
-                <i className="ri-target-lock-line"></i> View active lead
+                <i className="ri-focus-3-line"></i> View active lead
               </Link>
             )}
           </div>

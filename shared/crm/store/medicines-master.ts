@@ -1,13 +1,12 @@
-import {
-  DISCOVERY_MEDICINES,
-  type DiscoveryMedicine,
-} from "../lead-discovery/discovery-catalog";
+import type { DiscoveryMedicine } from "../lead-discovery/discovery-catalog";
 
 export type { DiscoveryMedicine };
 
-export const DEFAULT_MEDICINES: DiscoveryMedicine[] = DISCOVERY_MEDICINES;
+/** Medicines are loaded from Excel via /v1/master-data — no static defaults. */
+export const DEFAULT_MEDICINES: DiscoveryMedicine[] = [];
 
 export const DOSAGE_FORM_OPTIONS = [
+  "API",
   "Tablet",
   "Capsule",
   "Syrup",
@@ -21,15 +20,15 @@ export const DOSAGE_FORM_OPTIONS = [
 ] as const;
 
 export function cloneDefaultMedicines(): DiscoveryMedicine[] {
-  return DISCOVERY_MEDICINES.map((m) => ({ ...m }));
+  return [];
 }
 
-export function getDefaultMedicine(id: string): DiscoveryMedicine | undefined {
-  return DISCOVERY_MEDICINES.find((m) => m.id === id);
+export function getDefaultMedicine(_id: string): DiscoveryMedicine | undefined {
+  return undefined;
 }
 
-export function isDefaultMedicine(id: string): boolean {
-  return DISCOVERY_MEDICINES.some((m) => m.id === id);
+export function isDefaultMedicine(_id: string): boolean {
+  return false;
 }
 
 export function createBlankMedicine(
@@ -40,6 +39,6 @@ export function createBlankMedicine(
     id,
     saltId,
     name: "Untitled medicine",
-    dosageForm: "Tablet",
+    dosageForm: "API",
   };
 }

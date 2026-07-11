@@ -87,10 +87,10 @@ export function InboxListPanel({
           <InboxEmptyState
             icon="ri-mail-lock-line"
             title="Connect your inbox"
-            description="Sync Gmail to load threads and send from CRM."
+            description="Sync Outlook to load threads and send from CRM."
             action={
               <button type="button" className="crm-inbox-connect-btn" onClick={onConnect}>
-                Connect Gmail
+                Connect Outlook
               </button>
             }
           />

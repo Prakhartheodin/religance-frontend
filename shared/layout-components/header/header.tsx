@@ -5,12 +5,25 @@ import { ThemeChanger } from "../../redux/action";
 import { connect } from 'react-redux';
 import store from '@/shared/redux/store';
 import Modalsearch from '../modal-search/modalsearch';
-import { basePath } from '@/next.config';
 import BrandLogo from '@/shared/layout-components/brand-logo/brand-logo';
 import { CRM_HOME_PATH } from '@/shared/layout-components/sidebar/nav';
+import { getUser, logout } from '@/shared/auth/auth-client';
 import { useRouter } from 'next/navigation';
 
 const Header = ({ local_varaiable, ThemeChanger }:any) => {
+
+  const router = useRouter();
+  const authUser = getUser();
+  const displayName =
+    authUser?.name?.trim() ||
+    authUser?.email?.split("@")[0] ||
+    "Account";
+  const displaySubtitle = authUser?.email ?? "";
+
+  const handleLogout = () => {
+    logout();
+    router.replace("/");
+  };
 
   const [passwordshow1, setpasswordshow1] = useState(false);
 
@@ -369,11 +382,18 @@ const Header = ({ local_varaiable, ThemeChanger }:any) => {
 
                 <button id="dropdown-profile" type="button"
                   className="hs-dropdown-toggle ti-dropdown-toggle !gap-2 !p-0 flex-shrink-0 sm:me-2 me-0 !rounded-full !shadow-none text-xs align-middle !border-0 !shadow-transparent ">
-                  <img className="inline-block rounded-full " src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/faces/9.jpg`} width="32" height="32" alt="Image Description" />
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-[0.75rem] font-semibold">
+                    {displayName
+                      .split(/\s+/)
+                      .map((part) => part[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </span>
                 </button>
                 <div className="md:block hidden dropdown-profile">
-                  <p className="font-semibold mb-0 leading-none text-[#536485] text-[0.813rem] ">Json Taylor</p>
-                  <span className="opacity-[0.7] font-normal text-[#536485] block text-[0.6875rem] ">Web Designer</span>
+                  <p className="font-semibold mb-0 leading-none text-[#536485] text-[0.813rem] ">{displayName}</p>
+                  <span className="opacity-[0.7] font-normal text-[#536485] block text-[0.6875rem] truncate max-w-[10rem]" title={displaySubtitle}>{displaySubtitle}</span>
                 </div>
                 <div
                   className="hs-dropdown-menu ti-dropdown-menu !-mt-3 border-0 w-[11rem] !p-0 border-defaultborder hidden main-header-dropdown  pt-0 overflow-hidden header-profile-dropdown dropdown-menu-end"
@@ -399,8 +419,16 @@ const Header = ({ local_varaiable, ThemeChanger }:any) => {
                       className="ti ti-wallet text-[1.125rem] me-2 opacity-[0.7 !inline-flex"></i>Bal: $7,12,950</Link></li>
                     <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="#!"><i
                       className="ti ti-headset text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Support</Link></li>
-                    <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="#!"><i
-                      className="ti ti-logout text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Log Out</Link></li>
+                    <li>
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex"
+                      >
+                        <i className="ti ti-logout text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>
+                        Log Out
+                      </button>
+                    </li>
                   </ul>
                 </div>
               </div>

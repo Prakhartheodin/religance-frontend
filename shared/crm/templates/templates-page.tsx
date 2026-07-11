@@ -4,6 +4,9 @@ import {
   applyTemplate,
   categoryIcon,
   categoryLabel,
+  cloneDefaultEmailTemplates,
+  createBlankEmailTemplate,
+  getDefaultEmailTemplate,
   isDefaultEmailTemplate,
   TEMPLATE_VARIABLES,
   type EmailTemplate,
@@ -11,7 +14,12 @@ import {
   type TemplateVariables,
 } from "@/shared/crm/store/email-templates";
 import { useCrm } from "@/shared/crm/store/crm-context";
+import {
+  listBackendEmailTemplates,
+  saveBackendEmailTemplates,
+} from "@/shared/crm/store/outlook-api";
 import { CURRENT_USER } from "@/shared/crm/store/types";
+import { generateCrmId } from "@/shared/crm/store/workflow";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import {
@@ -34,6 +42,8 @@ const SAMPLE_VARS: TemplateVariables = {
 
 type EditorTab = "edit" | "preview";
 type InsertTarget = "subject" | "body";
+type SyncPhase = "idle" | "loading" | "saving";
+const SYNC_STUCK_TIMEOUT_MS = 15000;
 
 function templateEquals(a: EmailTemplate, b: EmailTemplate): boolean {
   return (
@@ -99,11 +109,7 @@ export default function TemplatesPage() {
     leads,
     hydrated,
     buildTemplateVars,
-    updateEmailTemplate,
-    addEmailTemplate,
-    deleteEmailTemplate,
-    resetEmailTemplate,
-    resetAllEmailTemplates,
+    replaceEmailTemplates,
   } = useCrm();
 
   const [selectedId, setSelectedId] = useState(emailTemplates[0]?.id ?? "");
@@ -112,13 +118,17 @@ export default function TemplatesPage() {
   const [previewLeadId, setPreviewLeadId] = useState<string>("sample");
   const [savedFlash, setSavedFlash] = useState(false);
   const [insertTarget, setInsertTarget] = useState<InsertTarget>("body");
+  const [syncPhase, setSyncPhase] = useState<SyncPhase>("idle");
+  const [syncError, setSyncError] = useState<string | null>(null);
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const remoteLoadedRef = useRef(false);
 
   const savedTemplate = useMemo(
     () => emailTemplates.find((t) => t.id === selectedId),
     [emailTemplates, selectedId]
   );
+  const isSyncing = syncPhase !== "idle";
 
   useEffect(() => {
     if (!savedTemplate) return;
@@ -131,6 +141,46 @@ export default function TemplatesPage() {
       setSelectedId(emailTemplates[0].id);
     }
   }, [emailTemplates, selectedId]);
+
+  useEffect(() => {
+    if (!hydrated || remoteLoadedRef.current) return;
+    remoteLoadedRef.current = true;
+    let active = true;
+
+    const loadTemplates = async () => {
+      if (active) {
+        setSyncPhase("loading");
+      }
+      try {
+        const res = await listBackendEmailTemplates();
+        if (!active) return;
+        if (res.live) {
+          replaceEmailTemplates(res.data);
+          setSyncError(null);
+        } else {
+          setSyncError(res.error);
+        }
+      } finally {
+        if (active) {
+          setSyncPhase("idle");
+        }
+      }
+    };
+
+    void loadTemplates();
+    return () => {
+      active = false;
+    };
+  }, [hydrated, replaceEmailTemplates]);
+
+  useEffect(() => {
+    if (syncPhase === "idle") return;
+    const t = window.setTimeout(() => {
+      setSyncPhase("idle");
+      setSyncError((prev) => prev ?? "Sync timed out. Please retry.");
+    }, SYNC_STUCK_TIMEOUT_MS);
+    return () => window.clearTimeout(t);
+  }, [syncPhase]);
 
   const previewVars = useMemo((): TemplateVariables => {
     if (previewLeadId === "sample") return SAMPLE_VARS;
@@ -171,33 +221,88 @@ export default function TemplatesPage() {
     ? isDefaultEmailTemplate(savedTemplate.id)
     : false;
 
-  const handleSave = () => {
-    if (!draft || !isDirty) return;
-    updateEmailTemplate(draft.id, {
-      name: draft.name.trim() || savedTemplate?.name || "Untitled",
-      subject: draft.subject,
-      body: draft.body,
-      description: draft.description,
-      category: draft.category,
-    });
+  const showSavedFlash = useCallback(() => {
     setSavedFlash(true);
     window.setTimeout(() => setSavedFlash(false), 2000);
+  }, []);
+
+  const persistTemplates = useCallback(
+    async (
+      nextTemplates: EmailTemplate[],
+      options?: { showSavedState?: boolean; onSuccess?: (saved: EmailTemplate[]) => void }
+    ) => {
+      const showSavedState = options?.showSavedState ?? true;
+      setSyncPhase("saving");
+      setSyncError(null);
+      try {
+        const res = await saveBackendEmailTemplates(nextTemplates);
+        if (res.live) {
+          replaceEmailTemplates(res.data);
+          options?.onSuccess?.(res.data);
+          if (showSavedState) showSavedFlash();
+        } else {
+          setSyncError(res.error);
+        }
+      } finally {
+        setSyncPhase("idle");
+      }
+    },
+    [replaceEmailTemplates, showSavedFlash]
+  );
+
+  const handleSave = () => {
+    if (!draft || !isDirty) return;
+    const nextTemplate: EmailTemplate = {
+      ...draft,
+      name: draft.name.trim() || savedTemplate?.name || "Untitled",
+    };
+    const nextTemplates = emailTemplates.map((t) =>
+      t.id === nextTemplate.id ? nextTemplate : t
+    );
+    void persistTemplates(nextTemplates);
   };
 
   const handleReset = () => {
     if (!selectedId || !isBuiltIn) return;
-    resetEmailTemplate(selectedId);
+    const def = getDefaultEmailTemplate(selectedId);
+    if (!def) return;
+    const nextTemplates = emailTemplates.map((t) =>
+      t.id === selectedId ? { ...def } : t
+    );
+    void persistTemplates(nextTemplates);
   };
 
   const handleAdd = () => {
-    const id = addEmailTemplate();
-    setSelectedId(id);
-    setTab("edit");
+    const id = generateCrmId("tpl");
+    const nextTemplates = [...emailTemplates, createBlankEmailTemplate(id)];
+    void persistTemplates(nextTemplates, {
+      showSavedState: false,
+      onSuccess: (saved) => {
+        setSelectedId(saved.find((t) => t.id === id)?.id ?? saved[0]?.id ?? id);
+        setTab("edit");
+      },
+    });
   };
 
   const handleDelete = () => {
     if (!selectedId || isBuiltIn) return;
-    deleteEmailTemplate(selectedId);
+    const nextTemplates = emailTemplates.filter((t) => t.id !== selectedId);
+    if (!nextTemplates.length) return;
+    void persistTemplates(nextTemplates, {
+      onSuccess: (saved) => {
+        setSelectedId(saved[0]?.id ?? "");
+      },
+    });
+  };
+
+  const handleResetAll = () => {
+    const nextTemplates = cloneDefaultEmailTemplates();
+    void persistTemplates(nextTemplates, {
+      onSuccess: (saved) => {
+        setSelectedId(saved[0]?.id ?? "");
+        setTab("edit");
+      },
+    });
   };
 
   const selectTemplate = (id: string) => {
@@ -232,7 +337,10 @@ export default function TemplatesPage() {
     <Fragment>
       <Seo title="Email Templates" />
 
-      <div className="box custom-box mb-0 flex flex-col min-h-[calc(100vh-12rem)]">
+      <div
+        className="box custom-box mb-0 flex flex-col min-h-[calc(100vh-12rem)]"
+        aria-busy={isSyncing}
+      >
         <div className="box-header !flex-wrap gap-x-4 gap-y-3 !items-start">
           <div className="min-w-0 flex-1 basis-full lg:basis-auto">
             <h5 className="box-title mb-0 before:!hidden">Email Templates</h5>
@@ -249,6 +357,21 @@ export default function TemplatesPage() {
                 Saved
               </span>
             )}
+            {syncPhase === "loading" && (
+              <span className="badge bg-info/10 text-info whitespace-nowrap" aria-live="polite">
+                Syncing...
+              </span>
+            )}
+            {syncPhase === "saving" && (
+              <span className="badge bg-info/10 text-info whitespace-nowrap" aria-live="polite">
+                Syncing...
+              </span>
+            )}
+            {!isSyncing && !syncError && (
+              <span className="badge bg-info/10 text-info whitespace-nowrap">
+                Done
+              </span>
+            )}
             {isDirty && (
               <span className="badge bg-warning/10 text-warning whitespace-nowrap">
                 Unsaved
@@ -257,7 +380,9 @@ export default function TemplatesPage() {
             <button
               type="button"
               className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-              onClick={resetAllEmailTemplates}
+              onClick={handleResetAll}
+              disabled={isSyncing}
+              aria-label="Reset all templates"
             >
               Reset all
             </button>
@@ -272,6 +397,12 @@ export default function TemplatesPage() {
         </div>
 
         <div className="box-body !p-0 flex-1 flex flex-col min-h-0">
+          {syncError ? (
+            <div className="alert alert-danger rounded-none mb-0" role="alert">
+              Could not sync templates with backend Mongo: {syncError}. Showing
+              cached local data until sync succeeds.
+            </div>
+          ) : null}
           <div className="grid grid-cols-12 flex-1 min-h-0 items-stretch">
             {/* Library */}
             <div className="lg:col-span-4 col-span-12 border-b lg:border-b-0 lg:border-e border-defaultborder dark:border-defaultborder/10 flex flex-col min-h-0">
@@ -283,6 +414,8 @@ export default function TemplatesPage() {
                   type="button"
                   className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
                   onClick={handleAdd}
+                  disabled={isSyncing}
+                  aria-label="Create new template"
                 >
                   <i className="ri-add-line me-1"></i>
                   New template
@@ -296,6 +429,7 @@ export default function TemplatesPage() {
                       <button
                         type="button"
                         onClick={() => selectTemplate(t.id)}
+                        aria-pressed={selected}
                         className={`w-full text-start px-4 py-3 border-b border-defaultborder dark:border-defaultborder/10 last:border-b-0 transition-colors ${
                           selected
                             ? "bg-primary/10 border-s-[3px] border-s-primary"
@@ -374,6 +508,8 @@ export default function TemplatesPage() {
                         type="button"
                         className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
                         onClick={handleReset}
+                        disabled={isSyncing}
+                        aria-label="Reset selected built-in template"
                       >
                         Reset
                       </button>
@@ -382,6 +518,8 @@ export default function TemplatesPage() {
                         type="button"
                         className="ti-btn ti-btn-danger !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
                         onClick={handleDelete}
+                        disabled={isSyncing}
+                        aria-label="Delete selected custom template"
                       >
                         Delete
                       </button>
@@ -390,7 +528,8 @@ export default function TemplatesPage() {
                       type="button"
                       className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
                       onClick={handleSave}
-                      disabled={!isDirty}
+                      disabled={!isDirty || isSyncing}
+                      aria-label="Save template changes"
                     >
                       Save changes
                     </button>

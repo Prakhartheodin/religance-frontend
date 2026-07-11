@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   LeadsSourceDonut,
   MetricSparkline,
@@ -15,12 +15,18 @@ import { buildReportsSnapshot } from "@/shared/crm/reports/reports-utils";
 import type {
   ActivityItem,
   MetricCardData,
+  ReportsSnapshot,
   RecentContactRow,
   RecentOutreachItem,
   SalesStatCard,
   TopDealRow,
 } from "@/shared/crm/reports/reports-utils";
-import { useCrm } from "@/shared/crm/store/crm-context";
+import {
+  fetchReportsLiveData,
+  type ReportsGraph,
+} from "@/shared/crm/reports/reports-api";
+import type { CrmEmail } from "@/shared/crm/store/types";
+import { isAuthed } from "@/shared/auth/auth-client";
 import Seo from "@/shared/layout-components/seo/seo";
 
 const ICON_BG_CLASS: Record<MetricCardData["iconBg"], string> = {
@@ -65,6 +71,17 @@ const SALT_LEGEND_COLORS = [
 
 const COL_STRETCH = "flex flex-col h-full";
 const BOX_STRETCH = "box h-full flex flex-col";
+const LIVE_REFRESH_MS = 30000;
+
+type ReportsLiveStatus = "idle" | "loading" | "refreshing" | "error";
+
+const EMPTY_GRAPH: ReportsGraph = {
+  companies: [],
+  contacts: [],
+  leads: [],
+  deals: [],
+  timeline: [],
+};
 
 function BoxMenu() {
   return (
@@ -103,7 +120,7 @@ function BoxMenu() {
 function SalesStatCardItem({ stat }: { stat: SalesStatCard }) {
   return (
     <div
-      className={`xl:col-span-3 lg:col-span-6 md:col-span-6 sm:col-span-6 col-span-12 ${COL_STRETCH}`}
+      className={`col-span-12 sm:col-span-6 xl:col-span-3 min-w-0 ${COL_STRETCH}`}
     >
       <div className={BOX_STRETCH}>
         <div className="box-body">
@@ -139,6 +156,7 @@ function SalesStatCardItem({ stat }: { stat: SalesStatCard }) {
                 <i
                   className={`ti ti-caret-${stat.changePositive ? "up" : "down"} me-1`}
                 ></i>
+                {stat.change >= 0 ? "+" : ""}
                 {stat.change}%
               </p>
               <p className="main-card-icon mb-0 text-end">
@@ -162,28 +180,32 @@ function MetricKpiCard({
   const changePositive = card.change >= 0;
 
   return (
-    <div className={`xxl:col-span-6 xl:col-span-6 col-span-12 ${COL_STRETCH}`}>
+    <div
+      className={`col-span-12 xxl:col-span-6 xl:col-span-6 min-w-0 ${COL_STRETCH}`}
+    >
       <div className={`${BOX_STRETCH} overflow-hidden`}>
         <div className="box-body">
-          <div className="flex items-top justify-between">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-top gap-3 sm:gap-0 sm:justify-between">
+            <div className="shrink-0">
               <span
                 className={`!text-[0.8rem] !w-[2.5rem] !h-[2.5rem] !leading-[2.5rem] !rounded-full inline-flex items-center justify-center ${ICON_BG_CLASS[card.iconBg]}`}
               >
                 <i className={`${card.icon} text-[1rem] text-white`}></i>
               </span>
             </div>
-            <div className="flex-grow ms-4">
-              <div className="flex items-center justify-between flex-wrap">
-                <div>
+            <div className="flex-grow sm:ms-4 min-w-0">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="min-w-0">
                   <p className="text-[#8c9097] dark:text-white/50 text-[0.813rem] mb-0">
                     {card.label}
                   </p>
-                  <h4 className="font-semibold text-[1.5rem] !mb-2">
+                  <h4 className="font-semibold text-[1.5rem] !mb-2 truncate">
                     {card.value}
                   </h4>
                 </div>
-                <MetricSparkline card={card} chartId={chartId} />
+                <div className="shrink-0 hidden sm:block">
+                  <MetricSparkline card={card} chartId={chartId} />
+                </div>
               </div>
               <div className="flex items-center justify-between mt-1">
                 <div>
@@ -276,27 +298,70 @@ function ContactRowItem({ contact }: { contact: RecentContactRow }) {
 }
 
 export default function ReportsPage() {
-  const { leads, companies, contacts, emails, deals, timeline, hydrated } =
-    useCrm();
   const [taskTab, setTaskTab] = useState<"active" | "completed">("active");
   const [billingTab, setBillingTab] = useState<"stages" | "assignees">(
     "stages"
   );
+  const [liveStatus, setLiveStatus] = useState<ReportsLiveStatus>("idle");
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [liveGraph, setLiveGraph] = useState<ReportsGraph>(EMPTY_GRAPH);
+  const [liveEmails, setLiveEmails] = useState<CrmEmail[]>([]);
+  const [ready, setReady] = useState(false);
 
-  const report = useMemo(
+  const loadLiveGraph = useCallback(async (background = false) => {
+    if (!isAuthed()) {
+      setLiveStatus("error");
+      setLiveError("Sign in to load live reports from the backend.");
+      setReady(true);
+      return;
+    }
+
+    setLiveStatus(background ? "refreshing" : "loading");
+    if (!background) setLiveError(null);
+
+    const result = await fetchReportsLiveData();
+    if (!result.live) {
+      setLiveStatus("error");
+      setLiveError(result.error);
+      setReady(true);
+      return;
+    }
+
+    setLiveGraph(result.data.graph);
+    setLiveEmails(result.data.emails);
+    setLiveError(null);
+    setLastSyncedAt(new Date().toISOString());
+    setLiveStatus("idle");
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    void loadLiveGraph(false);
+  }, [loadLiveGraph]);
+
+  useEffect(() => {
+    if (!ready || !isAuthed()) return;
+    const interval = window.setInterval(() => {
+      void loadLiveGraph(true);
+    }, LIVE_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [ready, loadLiveGraph]);
+
+  const report: ReportsSnapshot = useMemo(
     () =>
       buildReportsSnapshot(
-        leads,
-        companies,
-        contacts,
-        emails,
-        deals,
-        timeline
+        liveGraph.leads,
+        liveGraph.companies,
+        liveGraph.contacts,
+        liveEmails,
+        liveGraph.deals,
+        liveGraph.timeline
       ),
-    [leads, companies, contacts, emails, deals, timeline]
+    [liveEmails, liveGraph]
   );
 
-  if (!hydrated) {
+  if (!ready && liveStatus === "loading") {
     return (
       <div className="p-8 text-center text-textmuted">Loading analytics…</div>
     );
@@ -312,10 +377,60 @@ export default function ReportsPage() {
   const activeTasks = report.followUpTasks.filter((t) => !t.completed);
   const completedTasks = report.followUpTasks.filter((t) => t.completed);
   const visibleTasks = taskTab === "active" ? activeTasks : completedTasks;
+  const hasLiveRecords =
+    liveGraph.leads.length > 0 ||
+    liveGraph.contacts.length > 0 ||
+    liveGraph.deals.length > 0 ||
+    liveEmails.length > 0;
 
   return (
     <Fragment>
       <Seo title="Reports" />
+      <div className="box custom-box mb-6">
+        <div className="box-body py-3 px-4 flex flex-wrap items-center gap-2">
+          <h6 className="mb-0 me-auto">Reports</h6>
+          {(liveStatus === "loading" || liveStatus === "refreshing") && (
+            <span className="badge bg-info/10 text-info" aria-live="polite">
+              Syncing live data...
+            </span>
+          )}
+          {liveStatus === "idle" && (
+            <span className="badge bg-success/10 text-success">Live data</span>
+          )}
+          {liveStatus === "error" && (
+            <span className="badge bg-danger/10 text-danger">
+              Live sync issue
+            </span>
+          )}
+          {lastSyncedAt ? (
+            <span className="text-[0.75rem] text-textmuted">
+              Updated {new Date(lastSyncedAt).toLocaleTimeString()}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
+            onClick={() => void loadLiveGraph(false)}
+            disabled={liveStatus === "loading" || liveStatus === "refreshing"}
+            aria-label="Refresh reports data from backend"
+          >
+            Refresh
+          </button>
+        </div>
+        {liveError ? (
+          <div className="alert alert-warning mx-4 mb-3 py-2" role="alert">
+            Could not fetch latest reports from backend: {liveError}. Showing the
+            latest available data.
+          </div>
+        ) : null}
+        {liveStatus === "idle" && !hasLiveRecords ? (
+          <div className="alert alert-info mx-4 mb-3 py-2" role="status">
+            No CRM activity yet. Add leads from Discovery or Active Leads and
+            connect Outlook in Inbox — reports update automatically from the
+            backend.
+          </div>
+        ) : null}
+      </div>
 
       {/* Row 1 — Sales-style KPI cards */}
       <div className="grid grid-cols-12 gap-x-6 gap-y-6 items-stretch mb-6">
@@ -326,7 +441,9 @@ export default function ReportsPage() {
 
       {/* Row 2 — Recent outreach, pipeline overview, activities */}
       <div className="grid grid-cols-12 gap-x-6 gap-y-6 items-stretch mb-6">
-        <div className={`xxl:col-span-3 xl:col-span-12 col-span-12 ${COL_STRETCH}`}>
+        <div
+          className={`xxl:col-span-3 xl:col-span-12 col-span-12 order-2 xl:order-1 min-w-0 ${COL_STRETCH}`}
+        >
           <div className={`${BOX_STRETCH} recent-transactions-card overflow-hidden`}>
             <div className="box-header justify-between">
               <div className="box-title">Recent Outreach</div>
@@ -390,21 +507,21 @@ export default function ReportsPage() {
         </div>
 
         <div
-          className={`lg:col-span-6 sm:col-span-12 md:col-span-6 xxl:col-span-6 xl:col-span-8 col-span-12 ${COL_STRETCH}`}
+          className={`lg:col-span-6 sm:col-span-12 md:col-span-6 xxl:col-span-6 xl:col-span-8 col-span-12 order-1 xl:order-2 min-w-0 ${COL_STRETCH}`}
         >
           <div className={BOX_STRETCH}>
             <div className="box-header justify-between">
               <div className="box-title">Pipeline Overview</div>
               <BoxMenu />
             </div>
-            <div className="box-body flex-1">
+            <div className="box-body flex-1 overflow-x-auto">
               <PipelineOverviewChart report={report} />
             </div>
           </div>
         </div>
 
         <div
-          className={`lg:col-span-6 sm:col-span-12 md:col-span-6 xxl:col-span-3 xl:col-span-4 col-span-12 ${COL_STRETCH}`}
+          className={`lg:col-span-6 sm:col-span-12 md:col-span-6 xxl:col-span-3 xl:col-span-4 col-span-12 order-3 min-w-0 ${COL_STRETCH}`}
         >
           <div className={BOX_STRETCH}>
             <div className="box-header justify-between">
@@ -456,7 +573,7 @@ export default function ReportsPage() {
 
       {/* Row 3 — CRM target + sparkline KPIs + revenue */}
       <div className="grid grid-cols-12 gap-x-6 gap-y-6 items-stretch mb-6">
-        <div className="xxl:col-span-9 xl:col-span-12 col-span-12 h-full">
+        <div className="xxl:col-span-9 xl:col-span-12 col-span-12 h-full min-w-0">
           <div className="grid grid-cols-12 gap-x-6 gap-y-6 items-stretch h-full">
             <div
               className={`xxl:col-span-4 xl:col-span-4 col-span-12 gap-6 ${COL_STRETCH}`}
@@ -534,7 +651,7 @@ export default function ReportsPage() {
               </div>
               <div className={`${BOX_STRETCH} flex-1 min-h-0`}>
                 <div className="box-header !gap-0 !m-0 justify-between">
-                  <div className="box-title">Revenue Analytics</div>
+                  <div className="box-title">Outreach Activity</div>
                   <Link
                     href="/active-leads"
                     className="text-[0.75rem] text-[#8c9097] dark:text-white/50"
@@ -542,7 +659,7 @@ export default function ReportsPage() {
                     View All
                   </Link>
                 </div>
-                <div className="box-body !py-5 flex-1">
+                <div className="box-body !py-5 flex-1 overflow-x-auto">
                   <RevenueAnalyticsChart report={report} />
                 </div>
               </div>
@@ -551,7 +668,7 @@ export default function ReportsPage() {
         </div>
 
         <div
-          className={`xxl:col-span-3 xl:col-span-12 col-span-12 gap-6 ${COL_STRETCH}`}
+          className={`xxl:col-span-3 xl:col-span-12 col-span-12 gap-6 min-w-0 ${COL_STRETCH}`}
         >
           <div className={`${BOX_STRETCH} flex-1 min-h-0`}>
                 <div className="box-header justify-between">
@@ -561,7 +678,7 @@ export default function ReportsPage() {
                 <div className="box-body overflow-hidden flex-1">
                   <LeadsSourceDonut report={report} />
                 </div>
-                <div className="grid grid-cols-4 border-t border-dashed dark:border-defaultborder/10">
+                <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-dashed dark:border-defaultborder/10">
                   {report.leadsBySource.items.map((item, i) => (
                     <div key={item.label} className="col !p-0">
                       <div
@@ -601,9 +718,17 @@ export default function ReportsPage() {
                       {report.dealsStatus.total.toLocaleString()}
                     </h4>
                     <div className="ms-0 sm:ms-2">
-                      <span className="py-[0.18rem] px-[0.45rem] rounded-sm text-success !font-medium !text-[0.75em] bg-success/10">
+                      <span
+                        className={`py-[0.18rem] px-[0.45rem] rounded-sm !font-medium !text-[0.75em] ${
+                          report.dealsStatus.weekChange.startsWith("-")
+                            ? "text-danger bg-danger/10"
+                            : "text-success bg-success/10"
+                        }`}
+                      >
                         {report.dealsStatus.weekChange}
-                        <i className="ri-arrow-up-s-fill align-middle ms-1"></i>
+                        <i
+                          className={`ri-arrow-${report.dealsStatus.weekChange.startsWith("-") ? "down" : "up"}-s-fill align-middle ms-1`}
+                        ></i>
                       </span>
                       <span className="text-[#8c9097] dark:text-white/50 text-[0.813rem] ms-1">
                         win rate
@@ -688,7 +813,7 @@ export default function ReportsPage() {
             </div>
             <div className="box-body !p-0 flex-1">
               <div className="table-responsive">
-                <table className="table whitespace-nowrap table-hover min-w-full">
+                <table className="table table-hover min-w-full whitespace-normal md:whitespace-nowrap">
                   <thead>
                     <tr>
                       <th scope="col" className="text-start">
@@ -989,7 +1114,7 @@ export default function ReportsPage() {
             </div>
             <div className="box-body !p-0">
               <div className="table-responsive">
-                <table className="table whitespace-nowrap table-hover min-w-full ti-custom-table-hover">
+                <table className="table table-hover min-w-full whitespace-normal md:whitespace-nowrap ti-custom-table-hover">
                   <thead>
                     <tr className="border-b border-defaultborder dark:border-defaultborder/10">
                       <th scope="col">Company</th>

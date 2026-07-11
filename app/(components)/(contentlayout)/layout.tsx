@@ -1,5 +1,6 @@
 "use client"
 import PrelineScript from "@/app/PrelineScript"
+import { isAuthed } from "@/shared/auth/auth-client"
 import { CrmProvider } from "@/shared/crm/store/crm-context"
 import Backtotop from "@/shared/layout-components/backtotop/backtotop"
 import Footer from "@/shared/layout-components/footer/footer"
@@ -7,12 +8,23 @@ import Header from "@/shared/layout-components/header/header"
 import Sidebar from "@/shared/layout-components/sidebar/sidebar"
 import { ThemeChanger } from "@/shared/redux/action"
 import store from "@/shared/redux/store"
-import { Fragment,  useState } from "react"
+import { useRouter } from "next/navigation"
+import { Fragment, useEffect, useState } from "react"
 import {  connect } from "react-redux"
 
 const Layout = ({children,}:any) => {
 
   const [MyclassName, setMyClass] = useState("");
+  const [authed, setAuthed] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isAuthed()) {
+      setAuthed(true);
+    } else {
+      router.replace("/");
+    }
+  }, [router]);
 
   const Bodyclickk = () => {
     const theme = store.getState();
@@ -26,10 +38,14 @@ const Layout = ({children,}:any) => {
     }
   }
 
+  if (!authed) {
+    return null; // ponytail: blank until onAuthStateChanged confirms — redirect happens in effect
+  }
+
   return (
     <>
 
-      
+
     <Fragment>
 <div className='page'>
         <Header/>

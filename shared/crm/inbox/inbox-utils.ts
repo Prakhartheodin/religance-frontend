@@ -116,7 +116,23 @@ export function getInboxTag(
 }
 
 export function splitEmailBody(body: string): string[] {
-  const trimmed = body.trim();
+  const plain = body
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|blockquote|tr|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ");
+
+  const trimmed = plain.trim();
   if (!trimmed) return [];
   const byPara = trimmed.split(/\n\n+/).filter(Boolean);
   if (byPara.length > 1) return byPara;

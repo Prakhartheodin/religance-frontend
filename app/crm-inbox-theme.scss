@@ -236,35 +236,6 @@
     }
   }
 
-  .crm-inbox-online-users {
-    flex-shrink: 0;
-    padding: 0.75rem 0.9rem 1rem;
-    border-top: 1px solid var(--inbox-border);
-  }
-
-  .crm-inbox-online-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    margin-top: 0.35rem;
-  }
-
-  .crm-inbox-online-avatar {
-    position: relative;
-    display: inline-flex;
-  }
-
-  .crm-inbox-online-dot {
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 0.45rem;
-    height: 0.45rem;
-    border-radius: 50%;
-    background: var(--inbox-green);
-    border: 2px solid var(--inbox-surface);
-  }
-
   /* ── List panel ── */
   .crm-inbox-list-panel {
     width: 380px;
@@ -893,6 +864,11 @@
       border-color: var(--inbox-purple);
       color: var(--inbox-purple);
     }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   }
 
   .crm-inbox-contacts-item {
@@ -900,6 +876,11 @@
     background: none;
     padding: 0;
     cursor: pointer;
+
+    &.is-active .crm-inbox-avatar {
+      box-shadow: 0 0 0 2px var(--inbox-purple-glow);
+      border-color: rgba(167, 139, 250, 0.55);
+    }
   }
 
   .crm-inbox-contacts-avatar-wrap {
@@ -913,8 +894,12 @@
       width: 0.42rem;
       height: 0.42rem;
       border-radius: 50%;
-      background: var(--inbox-green);
+      background: rgba(255, 255, 255, 0.35);
       border: 2px solid var(--inbox-surface);
+
+      &.is-active {
+        background: var(--inbox-green);
+      }
     }
   }
 

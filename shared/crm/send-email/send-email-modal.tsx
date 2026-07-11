@@ -44,6 +44,7 @@ export function SendEmailModal({ lead, onClose }: SendEmailModalProps) {
   const handleSend = () => {
     if (!gmailConnected) {
       connectGmail();
+      return;
     }
     sendLeadEmail({ leadId: lead.id, templateId, subject, body });
     onClose();
@@ -75,14 +76,14 @@ export function SendEmailModal({ lead, onClose }: SendEmailModalProps) {
           <div className="box-body space-y-3">
             {!gmailConnected && (
               <div className="alert alert-warning text-[0.8125rem] mb-0">
-                Gmail not connected. Sending will connect demo Gmail and log the
+                Outlook not connected. Sending will connect Outlook and log the
                 email to this lead.
                 <button
                   type="button"
                   className="ti-btn ti-btn-sm ti-btn-warning ms-2"
                   onClick={connectGmail}
                 >
-                  Connect Gmail
+                  Connect Outlook
                 </button>
               </div>
             )}
@@ -130,7 +131,7 @@ export function SendEmailModal({ lead, onClose }: SendEmailModalProps) {
               type="button"
               className="ti-btn ti-btn-primary"
               onClick={handleSend}
-              disabled={!subject.trim()}
+              disabled={!subject.trim() || !gmailConnected}
             >
               <i className="ri-mail-send-line me-1"></i>
               Send & update stage

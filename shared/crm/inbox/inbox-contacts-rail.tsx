@@ -1,38 +1,56 @@
 "use client";
 
-import type { CrmContact } from "@/shared/crm/store/types";
+import type { OutlookMailboxAccount } from "@/shared/crm/store/types";
 import { InboxAvatar } from "./inbox-avatar";
 
 export function InboxContactsRail({
-  contacts,
-  onComposeTo,
+  accounts,
+  activeAccountId,
+  onSwitchAccount,
+  onConnectAccount,
+  connecting,
 }: {
-  contacts: CrmContact[];
-  onComposeTo: (email: string) => void;
+  accounts: OutlookMailboxAccount[];
+  activeAccountId: string | null;
+  onSwitchAccount: (accountId: string) => void;
+  onConnectAccount: () => void;
+  connecting?: boolean;
 }) {
-  const visible = contacts.slice(0, 12);
+  const visible = accounts.slice(0, 12);
 
   return (
-    <aside className="crm-inbox-contacts-rail" aria-label="Online contacts">
+    <aside className="crm-inbox-contacts-rail" aria-label="Outlook accounts">
       <button
         type="button"
         className="crm-inbox-contacts-add"
-        title="New message"
-        onClick={() => onComposeTo("")}
+        title="Connect another Outlook account"
+        onClick={onConnectAccount}
+        disabled={connecting}
       >
-        <i className="ri-add-line"></i>
+        {connecting ? (
+          <span className="spinner-border spinner-border-sm" aria-hidden></span>
+        ) : (
+          <i className="ri-add-line"></i>
+        )}
       </button>
-      {visible.map((ct, index) => (
+      {visible.map((account) => (
         <button
-          key={ct.id}
+          key={account.id}
           type="button"
-          className="crm-inbox-contacts-item"
-          title={`${ct.name} · ${ct.email}`}
-          onClick={() => onComposeTo(ct.email)}
+          className={`crm-inbox-contacts-item ${account.id === activeAccountId ? "is-active" : ""}`}
+          title={account.email}
+          onClick={() => onSwitchAccount(account.id)}
         >
           <span className="crm-inbox-contacts-avatar-wrap">
-            <InboxAvatar name={ct.name} size="sm" />
-            {index < 5 && <span className="crm-inbox-online-dot" />}
+            <InboxAvatar
+              name={(account.email.split("@")[0] || account.email).toUpperCase()}
+              size="sm"
+            />
+            <span
+              className={`crm-inbox-online-dot ${
+                account.id === activeAccountId ? "is-active" : ""
+              }`}
+            />
           </span>
         </button>
       ))}

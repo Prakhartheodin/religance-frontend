@@ -1,11 +1,15 @@
 "use client";
 
 type ComposeDraft = { to: string; subject: string; body: string };
+type ComposeTemplateOption = { id: string; name: string; category: string };
 
 export function InboxCompose({
   open,
   onClose,
   draft,
+  templates,
+  selectedTemplateId,
+  onTemplateChange,
   onDraftChange,
   onSend,
   sending,
@@ -13,6 +17,9 @@ export function InboxCompose({
   open: boolean;
   onClose: () => void;
   draft: ComposeDraft;
+  templates: ComposeTemplateOption[];
+  selectedTemplateId: string;
+  onTemplateChange: (templateId: string) => void;
   onDraftChange: (patch: Partial<ComposeDraft>) => void;
   onSend: () => void;
   sending?: boolean;
@@ -23,7 +30,12 @@ export function InboxCompose({
     draft.to.trim() && draft.subject.trim() && draft.body.trim() && !sending;
 
   return (
-    <div className="crm-inbox-compose" role="dialog" aria-label="Compose email">
+    <div
+      className="crm-inbox-compose"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Compose email"
+    >
       <div className="crm-inbox-compose-backdrop" onClick={onClose} aria-hidden />
       <div className="crm-inbox-compose-panel">
         <div className="crm-inbox-compose-header">
@@ -44,6 +56,20 @@ export function InboxCompose({
         </div>
 
         <div className="crm-inbox-compose-fields">
+          <div className="crm-inbox-compose-row">
+            <label>Template</label>
+            <select
+              value={selectedTemplateId}
+              onChange={(e) => onTemplateChange(e.target.value)}
+            >
+              <option value="">No template</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name} ({template.category})
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="crm-inbox-compose-row">
             <label>To</label>
             <input
@@ -66,7 +92,7 @@ export function InboxCompose({
             value={draft.body}
             onChange={(e) => onDraftChange({ body: e.target.value })}
             placeholder="Write your message…"
-            rows={12}
+            rows={9}
             className="crm-inbox-compose-body"
           />
         </div>

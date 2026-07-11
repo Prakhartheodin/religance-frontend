@@ -31,6 +31,15 @@ export type DiscoveredCompany = {
   leadScore: number;
   sourceProof: string;
   matchReasons: string[];
+  /** Populated when sourced from Excel buyer master */
+  annualBuyingCapacityKg?: number | null;
+  contactPersons?: string[];
+  designations?: string[];
+  emails?: string[];
+  phoneNumbers?: string[];
+  casNo?: string | null;
+  sourceFile?: string;
+  sourceRow?: number;
 };
 
 export type LeadScoreTier = "hot" | "warm" | "cold";

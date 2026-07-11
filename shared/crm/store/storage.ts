@@ -1,5 +1,6 @@
 import { createInitialCrmState } from "./seed";
 import type { CrmState } from "./types";
+import { stripDemoCrmEntities } from "./demo-crm";
 import { getDefaultEmailTemplate } from "./email-templates";
 import { getDefaultMedicine } from "./medicines-master";
 import { getDefaultSalt } from "./salts-master";
@@ -15,6 +16,39 @@ export function loadCrmState(): CrmState {
     if (!raw) return createInitialCrmState();
     const parsed = JSON.parse(raw) as CrmState;
     if (!parsed.leads || !parsed.companies) return createInitialCrmState();
+    if (typeof parsed.outlookAccountId === "undefined") {
+      parsed.outlookAccountId = null;
+    }
+    if (typeof parsed.outlookEmail === "undefined") {
+      parsed.outlookEmail = null;
+    }
+    if (typeof parsed.outlookAccounts === "undefined") {
+      parsed.outlookAccounts = [];
+    }
+    // Old demo sessions marked connected without a real Outlook account id.
+    if (parsed.gmailConnected && !parsed.outlookAccountId) {
+      parsed.gmailConnected = false;
+    }
+    if (
+      parsed.outlookAccountId &&
+      parsed.outlookEmail &&
+      !parsed.outlookAccounts.some((a) => a.id === parsed.outlookAccountId)
+    ) {
+      parsed.outlookAccounts = [
+        ...parsed.outlookAccounts,
+        {
+          id: parsed.outlookAccountId,
+          provider: "outlook",
+          email: parsed.outlookEmail,
+          status: "active",
+          createdAt: new Date().toISOString(),
+        },
+      ];
+    }
+    if (!parsed.outlookAccountId) {
+      parsed.emails = [];
+      parsed.outlookAccounts = [];
+    }
     if (!parsed.emailTemplates?.length) {
       parsed.emailTemplates = createInitialCrmState().emailTemplates;
     } else {
@@ -44,7 +78,7 @@ export function loadCrmState(): CrmState {
         return def ? { ...def, ...m } : m;
       });
     }
-    return parsed;
+    return stripDemoCrmEntities(parsed);
   } catch {
     return createInitialCrmState();
   }
