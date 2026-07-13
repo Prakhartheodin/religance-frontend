@@ -39,7 +39,6 @@ import { createInitialCrmState } from "./seed";
 import type {
   CrmCompany,
   CrmContact,
-  CrmDeal,
   CrmEmail,
   CrmEmailMeta,
   CrmLead,
