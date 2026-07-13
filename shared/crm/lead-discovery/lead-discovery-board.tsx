@@ -36,7 +36,7 @@ function EmptyPanel({
 
 export default function LeadDiscoveryBoard() {
   const { salts, medicines: allMedicines, masterDataSynced } = useCrm();
-  const [excelBuyers, setExcelBuyers] = useState<BackendBuyerMaster[]>([]);
+  const [catalogueBuyers, setCatalogueBuyers] = useState<BackendBuyerMaster[]>([]);
   const [buyersLoading, setBuyersLoading] = useState(true);
   const [buyersError, setBuyersError] = useState<string | null>(null);
   const [checkedSaltIds, setCheckedSaltIds] = useState<string[]>([]);
@@ -59,13 +59,13 @@ export default function LeadDiscoveryBoard() {
     if (!activeMedicine) return [];
     const salt = salts.find((s) => s.id === activeMedicine.saltId);
     if (!salt) return [];
-    return getCompaniesForMedicine(activeMedicine, salt.name, excelBuyers);
-  }, [activeMedicine, salts, excelBuyers]);
+    return getCompaniesForMedicine(activeMedicine, salt.name, catalogueBuyers);
+  }, [activeMedicine, salts, catalogueBuyers]);
 
   useEffect(() => {
     if (!isAuthed()) {
-      setExcelBuyers([]);
-      setBuyersError("Sign in to load buyers from Excel.");
+      setCatalogueBuyers([]);
+      setBuyersError("Sign in to load buyers.");
       setBuyersLoading(false);
       return;
     }
@@ -76,10 +76,10 @@ export default function LeadDiscoveryBoard() {
     void listBackendMasterData(true).then((res) => {
       if (!active) return;
       if (res.live) {
-        setExcelBuyers(res.data.buyers);
+        setCatalogueBuyers(res.data.buyers);
         setBuyersError(null);
       } else {
-        setExcelBuyers([]);
+        setCatalogueBuyers([]);
         setBuyersError(res.error);
       }
       setBuyersLoading(false);
@@ -145,8 +145,8 @@ export default function LeadDiscoveryBoard() {
                 {activeMedicine && (
                   <span className="text-textmuted dark:text-textmuted/90 font-normal text-[0.8125rem] ms-1">
                     · {companies.length} buyers
-                    {companies.length > 0 && excelBuyers.length > 0
-                      ? " (Excel)"
+                    {companies.length > 0 && catalogueBuyers.length > 0
+                      ? " (catalogue)"
                       : ""}
                   </span>
                 )}
@@ -155,10 +155,10 @@ export default function LeadDiscoveryBoard() {
                  <span className="text-[0.75rem] text-danger">{buyersError}</span>
                ) : buyersLoading ? (
                  <span className="text-[0.75rem] text-textmuted">Loading buyers…</span>
-               ) : excelBuyers.length > 0 ? (
-                 <span className="text-[0.75rem] text-success">
-                   Live · {excelBuyers.length} buyers from Excel
-                 </span>
+                ) : catalogueBuyers.length > 0 ? (
+                  <span className="text-[0.75rem] text-success">
+                    Live · {catalogueBuyers.length} buyers from catalogue
+                  </span>
                ) : !masterDataSynced ? (
                  <span className="text-[0.75rem] text-textmuted">
                    Syncing salts & medicines…

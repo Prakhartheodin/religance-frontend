@@ -32,7 +32,7 @@ export function getMedicinesForCheckedSalts(
   });
 }
 
-/** Buyers come only from Excel via /v1/master-data — no mock fallback. */
+/** Buyers come from MongoDB via /v1/master-data — no mock fallback. */
 export function getCompaniesForMedicine(
   medicine: DiscoveryMedicine,
   saltName: string,
