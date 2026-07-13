@@ -1,14 +1,10 @@
 "use client";
 
-import {
-  getBackendCompanies,
-  saveBackendCompanies,
-} from "@/shared/crm/store/companies-api";
-import { getBackendContacts, saveBackendContacts } from "@/shared/crm/store/contacts-api";
-import { getBackendDeals, saveBackendDeals } from "@/shared/crm/store/deals-api";
-import { getBackendLeads, saveBackendLeads } from "@/shared/crm/store/leads-api";
-import { getBackendTimeline, saveBackendTimeline } from "@/shared/crm/store/timeline-api";
-import { isDemoCrmLeads } from "@/shared/crm/store/demo-crm";
+import { getBackendCompanies } from "@/shared/crm/store/companies-api";
+import { getBackendContacts } from "@/shared/crm/store/contacts-api";
+import { getBackendDeals } from "@/shared/crm/store/deals-api";
+import { getBackendLeads } from "@/shared/crm/store/leads-api";
+import { getBackendTimeline } from "@/shared/crm/store/timeline-api";
 import {
   listOutlookAccounts,
   listOutlookThreads,
@@ -172,26 +168,12 @@ export async function fetchReportsLiveData(): Promise<
     return { live: false, error: crmError.error };
   }
 
-  let companies = companiesRes.live ? companiesRes.data : [];
-  let contacts = contactsRes.live ? contactsRes.data : [];
-  let leads = leadsRes.live ? leadsRes.data : [];
-  let deals = dealsRes.live ? dealsRes.data : [];
-  let timeline = timelineRes.live ? timelineRes.data : [];
-
-  if (isDemoCrmLeads(leads)) {
-    companies = [];
-    contacts = [];
-    leads = [];
-    deals = [];
-    timeline = [];
-    await Promise.all([
-      saveBackendCompanies([]),
-      saveBackendContacts([]),
-      saveBackendLeads([]),
-      saveBackendDeals([]),
-      saveBackendTimeline([]),
-    ]);
-  }
+  // Reports is read-only. It must never write, least of all a whole-array delete.
+  const companies = companiesRes.live ? companiesRes.data : [];
+  const contacts = contactsRes.live ? contactsRes.data : [];
+  const leads = leadsRes.live ? leadsRes.data : [];
+  const deals = dealsRes.live ? dealsRes.data : [];
+  const timeline = timelineRes.live ? timelineRes.data : [];
 
   return {
     live: true,

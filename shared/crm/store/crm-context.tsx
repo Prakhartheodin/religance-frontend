@@ -80,7 +80,6 @@ import { getBackendCompanies, saveBackendCompanies } from "./companies-api";
 import { getBackendEmailMeta, saveBackendEmailMeta } from "./emails-api";
 import { getBackendLeads, saveBackendLeads } from "./leads-api";
 import { getBackendDeals, saveBackendDeals } from "./deals-api";
-import { isDemoCrmLeads } from "@/shared/crm/store/demo-crm";
 import { getBackendTimeline, saveBackendTimeline } from "./timeline-api";
 import {
   getBackendEmailTemplates,
@@ -407,23 +406,6 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       let deals = dealsRes.live ? dealsRes.data : emptyGraph.deals;
       let timeline = timelineRes.live ? timelineRes.data : emptyGraph.timeline;
       let emailMeta = emailMetaRes.live ? emailMetaRes.data : [];
-
-      if (isDemoCrmLeads(leads)) {
-        companies = [];
-        contacts = [];
-        leads = [];
-        deals = [];
-        timeline = [];
-        emailMeta = [];
-        await Promise.all([
-          saveBackendCompanies([]),
-          saveBackendContacts([]),
-          saveBackendLeads([]),
-          saveBackendDeals([]),
-          saveBackendTimeline([]),
-          saveBackendEmailMeta([]),
-        ]);
-      }
 
       setState((prev) => ({
         ...prev,
