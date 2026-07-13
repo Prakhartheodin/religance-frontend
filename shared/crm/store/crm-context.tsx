@@ -41,9 +41,11 @@ import type {
   CrmContact,
   CrmDeal,
   CrmEmail,
+  CrmEmailMeta,
   CrmLead,
   CrmState,
   CrmTimelineEvent,
+  EmailFlag,
   LeadStage,
   SaveToContactOption,
 } from "./types";
@@ -75,6 +77,7 @@ import {
 } from "./outlook-api";
 import { getBackendContacts, saveBackendContacts } from "./contacts-api";
 import { getBackendCompanies, saveBackendCompanies } from "./companies-api";
+import { getBackendEmailMeta, saveBackendEmailMeta } from "./emails-api";
 import { getBackendLeads, saveBackendLeads } from "./leads-api";
 import { getBackendDeals, saveBackendDeals } from "./deals-api";
 import { isDemoCrmLeads } from "@/shared/crm/store/demo-crm";
@@ -126,6 +129,9 @@ type CrmContextValue = CrmState & {
   sendLeadEmail: (input: SendLeadEmailInput) => void;
   sendCrmEmail: (input: SendCrmEmailInput) => void;
   linkEmailToLead: (emailId: string, leadId: string) => void;
+  /** Star / read / archive / trash. Persisted, so it survives a reload. */
+  setEmailFlag: (emailId: string, flag: EmailFlag, on: boolean) => void;
+  emailIdsWithFlag: (flag: EmailFlag) => string[];
   connectGmail: () => Promise<void>;
   disconnectOutlook: (accountId?: string | null) => Promise<void>;
   syncOutlookInbox: (
@@ -181,6 +187,42 @@ function extractEmailAddress(raw: string): string {
   const s = String(raw || "").trim();
   const m = s.match(/<([^>]+)>/);
   return (m ? m[1] : s).trim().toLowerCase();
+}
+
+/**
+ * Graph re-sends every email with leadId: null on each sync, so the CRM's own
+ * overlay has to be re-applied afterwards or the user's lead links vanish.
+ */
+function applyEmailMeta(emails: CrmEmail[], meta: CrmEmailMeta[]): CrmEmail[] {
+  if (!meta.length) return emails;
+  const byId = new Map(meta.map((m) => [m.id, m]));
+  return emails.map((e) => {
+    const m = byId.get(e.id);
+    return m ? { ...e, leadId: m.leadId } : e;
+  });
+}
+
+function upsertEmailMeta(
+  meta: CrmEmailMeta[],
+  id: string,
+  patchMeta: Partial<Omit<CrmEmailMeta, "id">>
+): CrmEmailMeta[] {
+  const existing = meta.find((m) => m.id === id);
+  if (existing) {
+    return meta.map((m) => (m.id === id ? { ...m, ...patchMeta } : m));
+  }
+  return [
+    ...meta,
+    {
+      id,
+      leadId: null,
+      starred: false,
+      read: false,
+      archived: false,
+      trashed: false,
+      ...patchMeta,
+    },
+  ];
 }
 
 export function CrmProvider({ children }: { children: ReactNode }) {
@@ -338,13 +380,14 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     let active = true;
 
     const syncCrm = async () => {
-      const [companiesRes, contactsRes, leadsRes, dealsRes, timelineRes] =
+      const [companiesRes, contactsRes, leadsRes, dealsRes, timelineRes, emailMetaRes] =
         await Promise.all([
           getBackendCompanies(),
           getBackendContacts(),
           getBackendLeads(),
           getBackendDeals(),
           getBackendTimeline(),
+          getBackendEmailMeta(),
         ]);
       if (!active) return;
 
@@ -363,6 +406,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       let leads = leadsRes.live ? leadsRes.data : emptyGraph.leads;
       let deals = dealsRes.live ? dealsRes.data : emptyGraph.deals;
       let timeline = timelineRes.live ? timelineRes.data : emptyGraph.timeline;
+      let emailMeta = emailMetaRes.live ? emailMetaRes.data : [];
 
       if (isDemoCrmLeads(leads)) {
         companies = [];
@@ -370,12 +414,14 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         leads = [];
         deals = [];
         timeline = [];
+        emailMeta = [];
         await Promise.all([
           saveBackendCompanies([]),
           saveBackendContacts([]),
           saveBackendLeads([]),
           saveBackendDeals([]),
           saveBackendTimeline([]),
+          saveBackendEmailMeta([]),
         ]);
       }
 
@@ -386,6 +432,9 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         leads,
         deals,
         timeline,
+        emailMeta,
+        // Re-apply the overlay to whatever Outlook already synced into `emails`.
+        emails: applyEmailMeta(prev.emails, emailMeta),
       }));
       if (!active) return;
       crmSyncedRef.current = true;
@@ -463,6 +512,12 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     const t = window.setTimeout(() => void saveBackendTimeline(state.timeline), 800);
     return () => window.clearTimeout(t);
   }, [state.timeline]);
+
+  useEffect(() => {
+    if (!crmSyncedRef.current) return;
+    const t = window.setTimeout(() => void saveBackendEmailMeta(state.emailMeta), 800);
+    return () => window.clearTimeout(t);
+  }, [state.emailMeta]);
 
   const patch = useCallback((fn: (prev: CrmState) => CrmState) => {
     setState(fn);
@@ -915,6 +970,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           emails: prev.emails.map((e) =>
             e.id === emailId ? { ...e, leadId } : e
           ),
+          // The link is CRM-owned: persist it, or the next Outlook sync drops it.
+          emailMeta: upsertEmailMeta(prev.emailMeta, emailId, { leadId }),
           leads: prev.leads.map((l) =>
             l.id === leadId
               ? { ...l, stage: newStage, lastActivity: todayIso() }
@@ -934,6 +991,22 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       });
     },
     [patch]
+  );
+
+  const setEmailFlag = useCallback(
+    (emailId: string, flag: EmailFlag, on: boolean) => {
+      patch((prev) => ({
+        ...prev,
+        emailMeta: upsertEmailMeta(prev.emailMeta, emailId, { [flag]: on }),
+      }));
+    },
+    [patch]
+  );
+
+  const emailIdsWithFlag = useCallback(
+    (flag: EmailFlag) =>
+      state.emailMeta.filter((m) => m[flag]).map((m) => m.id),
+    [state.emailMeta]
   );
 
   const syncOutlookInbox = useCallback(
@@ -1097,7 +1170,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         outlookAccountId: account.id,
         outlookEmail: account.email,
         outlookAccounts: accounts,
-        emails: syncedEmails,
+        emails: applyEmailMeta(syncedEmails, prev.emailMeta),
       }));
     },
     [patch, state.outlookAccountId]
@@ -1463,6 +1536,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       sendLeadEmail,
       sendCrmEmail,
       linkEmailToLead,
+      setEmailFlag,
+      emailIdsWithFlag,
       connectGmail,
       disconnectOutlook,
       syncOutlookInbox,
@@ -1522,6 +1597,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       sendLeadEmail,
       sendCrmEmail,
       linkEmailToLead,
+      setEmailFlag,
+      emailIdsWithFlag,
       connectGmail,
       disconnectOutlook,
       syncOutlookInbox,

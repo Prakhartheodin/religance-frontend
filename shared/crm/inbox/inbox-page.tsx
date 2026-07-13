@@ -35,6 +35,8 @@ export default function InboxPage() {
     syncOutlookInbox,
     switchOutlookAccount,
     linkEmailToLead,
+    setEmailFlag,
+    emailIdsWithFlag,
     sendCrmEmail,
     emailTemplates,
     buildTemplateVars,
@@ -78,10 +80,12 @@ export default function InboxPage() {
     body: "",
   });
   const [composeTemplateId, setComposeTemplateId] = useState("");
-  const [starredIds, setStarredIds] = useState<string[]>([]);
-  const [readIds, setReadIds] = useState<string[]>([]);
-  const [archivedIds, setArchivedIds] = useState<string[]>([]);
-  const [trashedIds, setTrashedIds] = useState<string[]>([]);
+  // Star / read / archive / trash live in the CRM's persisted email overlay,
+  // not component state — they used to reset on every reload.
+  const starredIds = useMemo(() => emailIdsWithFlag("starred"), [emailIdsWithFlag]);
+  const readIds = useMemo(() => emailIdsWithFlag("read"), [emailIdsWithFlag]);
+  const archivedIds = useMemo(() => emailIdsWithFlag("archived"), [emailIdsWithFlag]);
+  const trashedIds = useMemo(() => emailIdsWithFlag("trashed"), [emailIdsWithFlag]);
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [sentFlash, setSentFlash] = useState(false);
@@ -352,15 +356,13 @@ export default function InboxPage() {
 
   const selectEmail = (id: string) => {
     setSelectedId(id);
-    setReadIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setEmailFlag(id, "read", true);
     setReplyText("");
   };
 
   const toggleStar = (id: string, ev: React.MouseEvent) => {
     ev.stopPropagation();
-    setStarredIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setEmailFlag(id, "starred", !starredIds.includes(id));
   };
 
   const toggleCheck = (id: string) => {
@@ -622,29 +624,21 @@ export default function InboxPage() {
                   gmailConnected={gmailConnected}
                   starred={starredIds.includes(active.id)}
                   onToggleStar={() =>
-                    setStarredIds((prev) =>
-                      prev.includes(active.id)
-                        ? prev.filter((x) => x !== active.id)
-                        : [...prev, active.id]
+                    setEmailFlag(
+                      active.id,
+                      "starred",
+                      !starredIds.includes(active.id)
                     )
                   }
-                  onMarkUnread={() =>
-                    setReadIds((prev) => prev.filter((id) => id !== active.id))
-                  }
+                  onMarkUnread={() => setEmailFlag(active.id, "read", false)}
                   onArchive={() => {
-                    setArchivedIds((prev) =>
-                      prev.includes(active.id) ? prev : [...prev, active.id]
-                    );
-                    setTrashedIds((prev) => prev.filter((id) => id !== active.id));
+                    setEmailFlag(active.id, "archived", true);
+                    setEmailFlag(active.id, "trashed", false);
                     setSelectedId(null);
                   }}
                   onDelete={() => {
-                    setTrashedIds((prev) =>
-                      prev.includes(active.id) ? prev : [...prev, active.id]
-                    );
-                    setArchivedIds((prev) =>
-                      prev.filter((id) => id !== active.id)
-                    );
+                    setEmailFlag(active.id, "trashed", true);
+                    setEmailFlag(active.id, "archived", false);
                     setSelectedId(null);
                   }}
                   replyText={replyText}

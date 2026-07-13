@@ -1,0 +1,16 @@
+"use client";
+
+import { apiGet, apiPut, type JsonResult } from "./api-client";
+import type { CrmEmailMeta } from "./types";
+
+// Per-user email overlay (lead links + star/read/archive/trash), persisted in
+// Mongo. The emails themselves stay in Graph and are re-synced, not stored.
+export async function getBackendEmailMeta(): Promise<JsonResult<CrmEmailMeta[]>> {
+  return apiGet<CrmEmailMeta[]>("/v1/crm/emails");
+}
+
+export async function saveBackendEmailMeta(
+  meta: CrmEmailMeta[]
+): Promise<JsonResult<CrmEmailMeta[]>> {
+  return apiPut<CrmEmailMeta[]>("/v1/crm/emails", { items: meta });
+}

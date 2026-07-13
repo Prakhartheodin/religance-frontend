@@ -91,6 +91,22 @@ export type CrmEmail = {
   sentAt: string;
 };
 
+/**
+ * CRM-owned overlay on a mail item. Graph owns the email itself (subject, body,
+ * sender); these are the bits the user creates here and would otherwise lose on
+ * every re-sync — the lead link and the folder/star flags. Keyed by CrmEmail.id.
+ */
+export type CrmEmailMeta = {
+  id: string;
+  leadId: string | null;
+  starred: boolean;
+  read: boolean;
+  archived: boolean;
+  trashed: boolean;
+};
+
+export type EmailFlag = "starred" | "read" | "archived" | "trashed";
+
 export type CrmTimelineEvent = {
   id: string;
   leadId: string;
@@ -115,6 +131,8 @@ export type CrmState = {
   leads: CrmLead[];
   deals: CrmDeal[];
   emails: CrmEmail[];
+  /** Persisted overlay for `emails` (which are re-fetched from Graph, not stored). */
+  emailMeta: CrmEmailMeta[];
   timeline: CrmTimelineEvent[];
   gmailConnected: boolean;
   outlookAccountId?: string | null;
