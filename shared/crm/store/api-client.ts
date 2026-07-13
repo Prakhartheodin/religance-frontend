@@ -1,6 +1,6 @@
 "use client";
 
-import { getToken } from "@/shared/auth/auth-client";
+import { getToken, logout } from "@/shared/auth/auth-client";
 
 const BACKEND_BASE =
   process.env.NEXT_PUBLIC_RELIGENCE_BACKEND_URL ?? "http://localhost:4000";
@@ -37,6 +37,18 @@ function normalizeFetchError(err: unknown): string {
   return err instanceof Error ? err.message : "Network request failed";
 }
 
+/**
+ * An expired or invalid token must send the user to the login page. Without this,
+ * a 401 becomes {live:false}, which the CRM store reads as "the server says you
+ * have no data" — an empty CRM with no explanation.
+ */
+function handleUnauthorized(status: number): boolean {
+  if (status !== 401) return false;
+  logout();
+  if (typeof window !== "undefined") window.location.href = "/";
+  return true;
+}
+
 export async function apiGet<T>(path: string): Promise<JsonResult<T>> {
   try {
     const res = await fetchWithTimeout(`${BACKEND_BASE}${path}`, {
@@ -44,6 +56,9 @@ export async function apiGet<T>(path: string): Promise<JsonResult<T>> {
       cache: "no-store",
     });
     if (!res.ok) {
+      if (handleUnauthorized(res.status)) {
+        return { live: false, error: "Session expired. Please sign in again." };
+      }
       const body = await res.json().catch(() => ({}));
       const message =
         (body as { error?: string }).error ?? `Request failed (${res.status})`;
@@ -66,6 +81,9 @@ export async function apiPut<T>(
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
+      if (handleUnauthorized(res.status)) {
+        return { live: false, error: "Session expired. Please sign in again." };
+      }
       const body = await res.json().catch(() => ({}));
       const message =
         (body as { error?: string }).error ?? `Request failed (${res.status})`;
