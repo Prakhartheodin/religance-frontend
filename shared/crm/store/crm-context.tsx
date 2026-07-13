@@ -391,22 +391,25 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         ]);
       if (!active) return;
 
-      // Server is source of truth. Empty backend → start empty (no mock seed).
-      // Legacy demo rows (*.example.com) are cleared once on load.
-      const emptyGraph = {
-        companies: [] as CrmCompany[],
-        contacts: [] as CrmContact[],
-        leads: [] as CrmLead[],
-        deals: [] as CrmDeal[],
-        timeline: [] as CrmTimelineEvent[],
-      };
+      // If ANY GET failed, do nothing at all: keep whatever is on screen, and
+      // leave crmSyncedRef false so the debounced save effects stay disarmed.
+      // Substituting [] here (as this code used to) meant a single timeout could
+      // PUT an empty array over the user's entire CRM.
+      const allLive =
+        companiesRes.live &&
+        contactsRes.live &&
+        leadsRes.live &&
+        dealsRes.live &&
+        timelineRes.live &&
+        emailMetaRes.live;
+      if (!allLive) return;
 
-      let companies = companiesRes.live ? companiesRes.data : emptyGraph.companies;
-      let contacts = contactsRes.live ? contactsRes.data : emptyGraph.contacts;
-      let leads = leadsRes.live ? leadsRes.data : emptyGraph.leads;
-      let deals = dealsRes.live ? dealsRes.data : emptyGraph.deals;
-      let timeline = timelineRes.live ? timelineRes.data : emptyGraph.timeline;
-      let emailMeta = emailMetaRes.live ? emailMetaRes.data : [];
+      const companies = companiesRes.live ? companiesRes.data : [];
+      const contacts = contactsRes.live ? contactsRes.data : [];
+      const leads = leadsRes.live ? leadsRes.data : [];
+      const deals = dealsRes.live ? dealsRes.data : [];
+      const timeline = timelineRes.live ? timelineRes.data : [];
+      const emailMeta = emailMetaRes.live ? emailMetaRes.data : [];
 
       setState((prev) => ({
         ...prev,
@@ -419,7 +422,6 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         // Re-apply the overlay to whatever Outlook already synced into `emails`.
         emails: applyEmailMeta(prev.emails, emailMeta),
       }));
-      if (!active) return;
       crmSyncedRef.current = true;
     };
 
@@ -440,9 +442,14 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       const res = await getBackendEmailTemplates();
       if (!active) return;
 
-      if (res.live && res.data.length) {
+      // Never arm the template save-effect on a failed GET: state still holds
+      // cloneDefaultEmailTemplates(), and the next edit would PUT those defaults
+      // over the user's customised set.
+      if (!res.live) return;
+
+      if (res.data.length) {
         setState((prev) => ({ ...prev, emailTemplates: res.data }));
-      } else if (res.live) {
+      } else {
         await saveBackendEmailTemplates(state.emailTemplates);
         if (!active) return;
       }
