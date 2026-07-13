@@ -291,6 +291,31 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     const syncMasterData = async () => {
       if (!isAuthed()) return;
 
+      // Mongo is the source of truth. The Excel catalogue is NEVER pushed back:
+      // a whole-array PUT from a boot path deleteMany's anything added by hand.
+      const [saltsRes, medsRes] = await Promise.all([
+        getBackendSalts(),
+        getBackendMedicines(),
+      ]);
+      if (!active) return;
+
+      // A failed GET must not arm the save effects, or the next settings edit
+      // PUTs whatever happens to be in local state over the real data.
+      if (!saltsRes.live || !medsRes.live) return;
+
+      if (saltsRes.data.length && medsRes.data.length) {
+        setState((prev) => ({
+          ...prev,
+          salts: saltsRes.data,
+          medicines: medsRes.data,
+        }));
+        masterSyncedRef.current = true;
+        setMasterDataSynced(true);
+        return;
+      }
+
+      // Nothing in Mongo yet: show the Excel catalogue read-only.
+      // ponytail: interim fallback until master data is seeded into Mongo.
       const result = await listBackendMasterData(true);
       if (!active) return;
 
@@ -318,38 +343,14 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           );
 
         if (excelSalts.length && excelMedicines.length) {
-          await Promise.all([
-            saveBackendSalts(excelSalts),
-            saveBackendMedicines(excelMedicines),
-          ]);
-          if (!active) return;
           setState((prev) => ({
             ...prev,
             salts: excelSalts,
             medicines: excelMedicines,
           }));
-          masterSyncedRef.current = true;
-          setMasterDataSynced(true);
-          return;
         }
       }
 
-      // Fallback: keep whatever is already in Mongo.
-      const [saltsRes, medsRes] = await Promise.all([
-        getBackendSalts(),
-        getBackendMedicines(),
-      ]);
-      if (!active) return;
-
-      const backendSalts = saltsRes.live ? saltsRes.data : [];
-      const backendMedicines = medsRes.live ? medsRes.data : [];
-      if (backendSalts.length && backendMedicines.length) {
-        setState((prev) => ({
-          ...prev,
-          salts: backendSalts,
-          medicines: backendMedicines,
-        }));
-      }
       masterSyncedRef.current = true;
       setMasterDataSynced(true);
     };
