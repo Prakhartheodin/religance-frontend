@@ -22,19 +22,20 @@ import {
   type TemplateVariables,
 } from "./email-templates";
 import {
-  cloneDefaultMedicines,
   createBlankMedicine,
-  getDefaultMedicine,
-  isDefaultMedicine,
   type DiscoveryMedicine,
 } from "./medicines-master";
+import { createBlankSalt, type SaltMasterItem } from "./salts-master";
 import {
-  cloneDefaultSalts,
-  createBlankSalt,
-  getDefaultSalt,
-  isDefaultSalt,
-  type SaltMasterItem,
-} from "./salts-master";
+  createBackendMedicine,
+  createBackendSalt,
+  getBackendMedicines,
+  getBackendSalts,
+  patchBackendMedicine,
+  patchBackendSalt,
+  removeBackendMedicine,
+  removeBackendSalt,
+} from "./catalogue-api";
 import { createInitialCrmState } from "./seed";
 import type {
   CrmCompany,
@@ -60,18 +61,13 @@ import {
   todayIso,
 } from "./workflow";
 import {
-  getBackendMedicines,
-  getBackendSalts,
   fetchOutlookConnectUrl,
   disconnectOutlookAccount as disconnectOutlookAccountApi,
   getOutlookThread,
-  listBackendMasterData,
   listOutlookAccounts,
   listOutlookThreads,
   type OutlookAccount,
   type OutlookThreadItem,
-  saveBackendMedicines,
-  saveBackendSalts,
   sendOutlookMessage,
 } from "./outlook-api";
 import { getBackendContacts, saveBackendContacts } from "./contacts-api";
@@ -154,19 +150,19 @@ type CrmContextValue = CrmState & {
   deleteEmailTemplate: (id: string) => void;
   resetEmailTemplate: (id: string) => void;
   resetAllEmailTemplates: () => void;
-  addSalt: () => string;
-  updateSalt: (id: string, patch: Partial<Omit<SaltMasterItem, "id">>) => void;
-  deleteSalt: (id: string) => boolean;
-  resetSalt: (id: string) => void;
-  resetAllSalts: () => void;
-  addMedicine: (saltId?: string) => string;
+  /** Shared catalogue: every edit is a per-item server call. */
+  addSalt: () => Promise<string | null>;
+  updateSalt: (
+    id: string,
+    patch: Partial<Omit<SaltMasterItem, "id">>
+  ) => Promise<boolean>;
+  deleteSalt: (id: string) => Promise<boolean>;
+  addMedicine: (saltId?: string) => Promise<string | null>;
   updateMedicine: (
     id: string,
     patch: Partial<Omit<DiscoveryMedicine, "id">>
-  ) => void;
-  deleteMedicine: (id: string) => boolean;
-  resetMedicine: (id: string) => void;
-  resetAllMedicines: () => void;
+  ) => Promise<boolean>;
+  deleteMedicine: (id: string) => Promise<boolean>;
   pendingComposeLeadId: string | null;
   setPendingComposeLeadId: (id: string | null) => void;
   resetStore: () => void;
@@ -227,7 +223,6 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CrmState>(createInitialCrmState);
   const [hydrated, setHydrated] = useState(false);
   const importedMasterLoadedRef = useRef(false);
-  const masterSyncedRef = useRef(false);
   const crmLoadedRef = useRef(false);
   const crmSyncedRef = useRef(false);
   const templatesLoadedRef = useRef(false);
@@ -269,7 +264,6 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       setState(next);
 
       importedMasterLoadedRef.current = false;
-      masterSyncedRef.current = false;
       crmLoadedRef.current = false;
       crmSyncedRef.current = false;
       templatesLoadedRef.current = false;
@@ -287,70 +281,28 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     importedMasterLoadedRef.current = true;
     let active = true;
 
+    // The salt/medicine catalogue is SHARED and read-only from here. Mongo is the
+    // source of truth; the client never writes the whole list back.
+    //
+    // This used to GET the catalogue, setState it, and then a debounced effect
+    // PUT the entire array straight back — so every login by every user rewrote
+    // the same 10 rows under their own userId. That is where the duplicate
+    // documents came from. Edits now go through per-item POST/PATCH/DELETE.
     const syncMasterData = async () => {
       if (!isAuthed()) return;
 
-      // Mongo is the source of truth. The Excel catalogue is NEVER pushed back:
-      // a whole-array PUT from a boot path deleteMany's anything added by hand.
       const [saltsRes, medsRes] = await Promise.all([
         getBackendSalts(),
         getBackendMedicines(),
       ]);
       if (!active) return;
-
-      // A failed GET must not arm the save effects, or the next settings edit
-      // PUTs whatever happens to be in local state over the real data.
       if (!saltsRes.live || !medsRes.live) return;
 
-      if (saltsRes.data.length && medsRes.data.length) {
-        setState((prev) => ({
-          ...prev,
-          salts: saltsRes.data,
-          medicines: medsRes.data,
-        }));
-        masterSyncedRef.current = true;
-        setMasterDataSynced(true);
-        return;
-      }
-
-      // Nothing in Mongo yet: show the Excel catalogue read-only.
-      // ponytail: interim fallback until master data is seeded into Mongo.
-      const result = await listBackendMasterData(true);
-      if (!active) return;
-
-      if (result.live) {
-        const excelSalts = result.data.salts
-          .map((salt) => ({
-            id: String(salt.id || "").trim(),
-            name: String(salt.name || "").trim(),
-          }))
-          .filter((salt) => salt.id && salt.name);
-        const saltIdSet = new Set(excelSalts.map((salt) => salt.id));
-        const excelMedicines = result.data.medicines
-          .map((medicine) => ({
-            id: String(medicine.id || "").trim(),
-            saltId: String(medicine.saltId || "").trim(),
-            name: String(medicine.name || "").trim(),
-            dosageForm: String(medicine.dosageForm || "").trim() || "API",
-          }))
-          .filter(
-            (medicine) =>
-              medicine.id &&
-              medicine.name &&
-              medicine.saltId &&
-              saltIdSet.has(medicine.saltId)
-          );
-
-        if (excelSalts.length && excelMedicines.length) {
-          setState((prev) => ({
-            ...prev,
-            salts: excelSalts,
-            medicines: excelMedicines,
-          }));
-        }
-      }
-
-      masterSyncedRef.current = true;
+      setState((prev) => ({
+        ...prev,
+        salts: saltsRes.data,
+        medicines: medsRes.data,
+      }));
       setMasterDataSynced(true);
     };
 
@@ -359,15 +311,6 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       active = false;
     };
   }, [hydrated, authUserId]);
-
-  // Persist salt/medicine edits to Mongo once the initial sync has run.
-  useEffect(() => {
-    if (masterSyncedRef.current) void saveBackendSalts(state.salts);
-  }, [state.salts]);
-
-  useEffect(() => {
-    if (masterSyncedRef.current) void saveBackendMedicines(state.medicines);
-  }, [state.medicines]);
 
   // Mongo is the source of truth for the CRM entities
   // (companies/contacts/leads/deals/timeline). Each has its own model/service;
@@ -1284,30 +1227,37 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     }));
   }, [patch]);
 
-  const addSalt = useCallback((): string => {
-    const id = generateCrmId("salt");
-    const salt = createBlankSalt(id);
-    patch((prev) => ({
-      ...prev,
-      salts: [...prev.salts, salt],
-    }));
-    return id;
+  // The catalogue is shared, so every edit is a server call first and local state
+  // second. Nothing here writes the whole list — that is what duplicated it.
+  const addSalt = useCallback(async (): Promise<string | null> => {
+    const salt = createBlankSalt(generateCrmId("salt"));
+    const res = await createBackendSalt(salt);
+    if (!res.live) return null;
+    patch((prev) => ({ ...prev, salts: [...prev.salts, res.data] }));
+    return res.data.id;
   }, [patch]);
 
   const updateSalt = useCallback(
-    (id: string, saltPatch: Partial<Omit<SaltMasterItem, "id">>) => {
+    async (
+      id: string,
+      saltPatch: Partial<Omit<SaltMasterItem, "id">>
+    ): Promise<boolean> => {
+      const res = await patchBackendSalt(id, saltPatch);
+      if (!res.live) return false;
+      const next = res.data;
       patch((prev) => {
         const existing = prev.salts.find((s) => s.id === id);
-        if (!existing) return prev;
-
-        const nextName = saltPatch.name?.trim();
         const renamed =
-          nextName && nextName !== existing.name
-            ? { from: existing.name, to: nextName }
+          existing && existing.name !== next.name
+            ? { from: existing.name, to: next.name }
             : null;
-
         return {
           ...prev,
+          // `matchedSalt` on a lead is a NAME SNAPSHOT, not a foreign key, so a
+          // rename has to be carried across by hand. This only fixes the current
+          // user's leads. A server-side cascade is not safe yet: leads are still
+          // on the whole-array PUT, so another user's next save would overwrite
+          // it with their stale copy. Revisit once leads are per-item.
           leads: renamed
             ? prev.leads.map((l) =>
                 l.matchedSalt === renamed.from
@@ -1315,197 +1265,99 @@ export function CrmProvider({ children }: { children: ReactNode }) {
                   : l
               )
             : prev.leads,
-          salts: prev.salts.map((s) =>
-            s.id === id
-              ? {
-                  ...s,
-                  ...saltPatch,
-                  name: nextName ?? s.name,
-                }
-              : s
-          ),
+          salts: prev.salts.map((s) => (s.id === id ? next : s)),
         };
       });
+      return true;
     },
     [patch]
   );
 
   const deleteSalt = useCallback(
-    (id: string): boolean => {
-      if (isDefaultSalt(id)) return false;
-      let deleted = false;
-      patch((prev) => {
-        if (prev.medicines.some((m) => m.saltId === id)) return prev;
-        deleted = true;
-        return {
-          ...prev,
-          salts: prev.salts.filter((s) => s.id !== id),
-        };
-      });
-      return deleted;
+    async (id: string): Promise<boolean> => {
+      // The backend 409s if any medicine still points at this salt.
+      const res = await removeBackendSalt(id);
+      if (!res.live) return false;
+      patch((prev) => ({
+        ...prev,
+        salts: prev.salts.filter((s) => s.id !== id),
+      }));
+      return true;
     },
     [patch]
   );
-
-  const resetSalt = useCallback(
-    (id: string) => {
-      const def = getDefaultSalt(id);
-      if (!def) return;
-      patch((prev) => {
-        const existing = prev.salts.find((s) => s.id === id);
-        const leads =
-          existing && existing.name !== def.name
-            ? prev.leads.map((l) =>
-                l.matchedSalt === existing.name
-                  ? { ...l, matchedSalt: def.name }
-                  : l
-              )
-            : prev.leads;
-        return {
-          ...prev,
-          leads,
-          salts: prev.salts.map((s) => (s.id === id ? { ...def } : s)),
-        };
-      });
-    },
-    [patch]
-  );
-
-  const resetAllSalts = useCallback(() => {
-    patch((prev) => ({
-      ...prev,
-      salts: cloneDefaultSalts(),
-    }));
-  }, [patch]);
 
   const addMedicine = useCallback(
-    (saltId?: string): string => {
-      const id = generateCrmId("med");
-      patch((prev) => {
-        const med = createBlankMedicine(
-          id,
-          saltId ?? prev.salts[0]?.id ?? "1"
-        );
-        return {
-          ...prev,
-          medicines: [...prev.medicines, med],
-        };
-      });
-      return id;
+    async (saltId?: string): Promise<string | null> => {
+      const fallbackSaltId = saltId ?? state.salts[0]?.id;
+      if (!fallbackSaltId) return null; // the backend 400s on an unknown saltId
+      const med = createBlankMedicine(generateCrmId("med"), fallbackSaltId);
+      const res = await createBackendMedicine(med);
+      if (!res.live) return null;
+      patch((prev) => ({ ...prev, medicines: [...prev.medicines, res.data] }));
+      return res.data.id;
     },
-    [patch]
+    [patch, state.salts]
   );
 
   const updateMedicine = useCallback(
-    (id: string, medPatch: Partial<Omit<DiscoveryMedicine, "id">>) => {
+    async (
+      id: string,
+      medPatch: Partial<Omit<DiscoveryMedicine, "id">>
+    ): Promise<boolean> => {
+      const res = await patchBackendMedicine(id, medPatch);
+      if (!res.live) return false;
+      const next = res.data;
       patch((prev) => {
         const existing = prev.medicines.find((m) => m.id === id);
-        if (!existing) return prev;
-
-        const nextName = medPatch.name?.trim();
-        const nextDosageForm = medPatch.dosageForm?.trim();
-        const renamed =
-          nextName && nextName !== existing.name
-            ? { from: existing.name, to: nextName }
-            : null;
-        const dosageChanged =
-          nextDosageForm && nextDosageForm !== existing.dosageForm
-            ? { from: existing.dosageForm, to: nextDosageForm }
-            : null;
-
+        // As with salts: `matchedMedicine` / `dosageForm` are name snapshots on
+        // the lead, so a rename is carried across by hand, for this user's leads
+        // only. See the note in updateSalt.
         let leads = prev.leads;
-        if (renamed) {
+        if (existing && existing.name !== next.name) {
           leads = leads.map((l) =>
-            l.matchedMedicine === renamed.from
-              ? { ...l, matchedMedicine: renamed.to }
+            l.matchedMedicine === existing.name
+              ? { ...l, matchedMedicine: next.name }
               : l
           );
         }
-        if (dosageChanged) {
-          const medName = nextName ?? existing.name;
+        if (existing && existing.dosageForm !== next.dosageForm) {
           leads = leads.map((l) =>
-            l.matchedMedicine === medName && l.dosageForm === dosageChanged.from
-              ? { ...l, dosageForm: dosageChanged.to }
+            l.matchedMedicine === next.name &&
+            l.dosageForm === existing.dosageForm
+              ? { ...l, dosageForm: next.dosageForm }
               : l
           );
         }
-
         return {
           ...prev,
           leads,
-          medicines: prev.medicines.map((m) =>
-            m.id === id
-              ? {
-                  ...m,
-                  ...medPatch,
-                  name: nextName ?? m.name,
-                  dosageForm: nextDosageForm ?? m.dosageForm,
-                }
-              : m
-          ),
+          medicines: prev.medicines.map((m) => (m.id === id ? next : m)),
         };
       });
+      return true;
     },
     [patch]
   );
 
   const deleteMedicine = useCallback(
-    (id: string): boolean => {
-      if (isDefaultMedicine(id)) return false;
-      let deleted = false;
-      patch((prev) => {
-        const med = prev.medicines.find((m) => m.id === id);
-        if (!med) return prev;
-        if (prev.leads.some((l) => l.matchedMedicine === med.name)) return prev;
-        deleted = true;
-        return {
-          ...prev,
-          medicines: prev.medicines.filter((m) => m.id !== id),
-        };
-      });
-      return deleted;
+    async (id: string): Promise<boolean> => {
+      // Local guard only — a medicine still named on a lead stays put. The lead
+      // link is by name, so the server cannot check this for us.
+      const med = state.medicines.find((m) => m.id === id);
+      if (med && state.leads.some((l) => l.matchedMedicine === med.name)) {
+        return false;
+      }
+      const res = await removeBackendMedicine(id);
+      if (!res.live) return false;
+      patch((prev) => ({
+        ...prev,
+        medicines: prev.medicines.filter((m) => m.id !== id),
+      }));
+      return true;
     },
-    [patch]
+    [patch, state.medicines, state.leads]
   );
-
-  const resetMedicine = useCallback(
-    (id: string) => {
-      const def = getDefaultMedicine(id);
-      if (!def) return;
-      patch((prev) => {
-        const existing = prev.medicines.find((m) => m.id === id);
-        let leads = prev.leads;
-        if (existing && existing.name !== def.name) {
-          leads = leads.map((l) =>
-            l.matchedMedicine === existing.name
-              ? { ...l, matchedMedicine: def.name }
-              : l
-          );
-        }
-        if (existing && existing.dosageForm !== def.dosageForm) {
-          leads = leads.map((l) =>
-            l.matchedMedicine === def.name &&
-            l.dosageForm === existing.dosageForm
-              ? { ...l, dosageForm: def.dosageForm }
-              : l
-          );
-        }
-        return {
-          ...prev,
-          leads,
-          medicines: prev.medicines.map((m) => (m.id === id ? { ...def } : m)),
-        };
-      });
-    },
-    [patch]
-  );
-
-  const resetAllMedicines = useCallback(() => {
-    patch((prev) => ({
-      ...prev,
-      medicines: cloneDefaultMedicines(),
-    }));
-  }, [patch]);
 
   const value = useMemo<CrmContextValue>(
     () => ({
@@ -1558,13 +1410,9 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       addSalt,
       updateSalt,
       deleteSalt,
-      resetSalt,
-      resetAllSalts,
       addMedicine,
       updateMedicine,
       deleteMedicine,
-      resetMedicine,
-      resetAllMedicines,
       pendingComposeLeadId,
       setPendingComposeLeadId,
       resetStore,
@@ -1602,13 +1450,9 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       addSalt,
       updateSalt,
       deleteSalt,
-      resetSalt,
-      resetAllSalts,
       addMedicine,
       updateMedicine,
       deleteMedicine,
-      resetMedicine,
-      resetAllMedicines,
       pendingComposeLeadId,
       resetStore,
     ]

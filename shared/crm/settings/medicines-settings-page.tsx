@@ -2,7 +2,6 @@
 
 import {
   DOSAGE_FORM_OPTIONS,
-  isDefaultMedicine,
   type DiscoveryMedicine,
 } from "@/shared/crm/store/medicines-master";
 import { useCrm } from "@/shared/crm/store/crm-context";
@@ -35,8 +34,6 @@ export default function MedicinesSettingsPage() {
     addMedicine,
     updateMedicine,
     deleteMedicine,
-    resetMedicine,
-    resetAllMedicines,
   } = useCrm();
 
   const [selectedId, setSelectedId] = useState(medicines[0]?.id ?? "");
@@ -128,46 +125,49 @@ export default function MedicinesSettingsPage() {
     return !medicineEquals(draft, savedMedicine);
   }, [draft, savedMedicine]);
 
-  const isBuiltIn = savedMedicine ? isDefaultMedicine(savedMedicine.id) : false;
   const leadCount = draft ? (leadCountByMedicineName.get(draft.name) ?? 0) : 0;
   const canDelete =
     savedMedicine &&
-    !isBuiltIn &&
     (leadCountByMedicineName.get(savedMedicine.name) ?? 0) === 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!draft || !isDirty) return;
-    updateMedicine(draft.id, {
+    setDeleteError("");
+    const ok = await updateMedicine(draft.id, {
       name: draft.name.trim() || savedMedicine?.name || "Untitled medicine",
       saltId: draft.saltId,
       dosageForm: draft.dosageForm.trim() || savedMedicine?.dosageForm || "Tablet",
     });
+    if (!ok) {
+      setDeleteError("Could not save. Your change was not applied.");
+      return;
+    }
     setSavedFlash(true);
     window.setTimeout(() => setSavedFlash(false), 2000);
   };
 
-  const handleAdd = () => {
-    const id = addMedicine(salts[0]?.id);
+  const handleAdd = async () => {
+    setDeleteError("");
+    const id = await addMedicine(salts[0]?.id);
+    if (!id) {
+      setDeleteError("Could not create the medicine. Nothing was saved.");
+      return;
+    }
     setSelectedId(id);
     setSearch("");
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedId) return;
     setDeleteError("");
-    const ok = deleteMedicine(selectedId);
+    const ok = await deleteMedicine(selectedId);
     if (!ok) {
       setDeleteError(
         leadCount > 0
           ? "Cannot delete — active leads reference this medicine."
-          : "Cannot delete this medicine."
+          : "Could not delete this medicine."
       );
     }
-  };
-
-  const handleReset = () => {
-    if (!selectedId || !isBuiltIn) return;
-    resetMedicine(selectedId);
   };
 
   if (!hydrated || !draft) {
@@ -202,13 +202,6 @@ export default function MedicinesSettingsPage() {
                 Unsaved
               </span>
             )}
-            <button
-              type="button"
-              className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-              onClick={resetAllMedicines}
-            >
-              Reset all
-            </button>
             <Link
               href="/lead-discovery"
               className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
@@ -261,14 +254,13 @@ export default function MedicinesSettingsPage() {
                       <th className="!px-2">Medicine</th>
                       <th className="!px-2 hidden xl:table-cell">Salt</th>
                       <th className="!w-20 !px-2">Form</th>
-                      <th className="!w-16 !px-2">Type</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedMedicines.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={4}
                           className="text-center text-textmuted !py-6 !px-2"
                         >
                           No medicines match your search
@@ -303,17 +295,6 @@ export default function MedicinesSettingsPage() {
                               <span className="badge bg-light text-defaulttextcolor text-[0.65rem]">
                                 {med.dosageForm}
                               </span>
-                            </td>
-                            <td className="!px-2">
-                              {isDefaultMedicine(med.id) ? (
-                                <span className="text-[0.6875rem] text-textmuted">
-                                  Built-in
-                                </span>
-                              ) : (
-                                <span className="badge bg-primary/10 text-primary text-[0.65rem]">
-                                  Custom
-                                </span>
-                              )}
                             </td>
                           </tr>
                         );
@@ -404,36 +385,19 @@ export default function MedicinesSettingsPage() {
                     <span className="badge bg-light text-defaulttextcolor text-[0.75rem]">
                       {leadCount} active leads
                     </span>
-                    {isBuiltIn && (
-                      <span className="badge bg-secondary/10 text-secondary text-[0.75rem]">
-                        Built-in
-                      </span>
-                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {isBuiltIn ? (
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-                        onClick={handleReset}
-                      >
-                        Reset
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-danger !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-                        onClick={handleDelete}
-                        disabled={!canDelete}
-                        title={
-                          !canDelete
-                            ? "Remove linked leads before deleting"
-                            : undefined
-                        }
-                      >
-                        Delete
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-danger !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
+                      onClick={handleDelete}
+                      disabled={!canDelete}
+                      title={
+                        !canDelete ? "Remove linked leads before deleting" : undefined
+                      }
+                    >
+                      Delete
+                    </button>
                     <button
                       type="button"
                       className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"

@@ -279,25 +279,7 @@ export async function listBackendMasterData(
   return getJson<BackendMasterData>(`/v1/master-data${query}`);
 }
 
-// Per-user Salts / Medicines master, persisted in Mongo (source of truth).
-export async function getBackendSalts(): Promise<JsonResult<SaltMasterItem[]>> {
-  return getJson<SaltMasterItem[]>("/v1/master-data/salts");
-}
 
-export async function saveBackendSalts(
-  salts: SaltMasterItem[]
-): Promise<JsonResult<SaltMasterItem[]>> {
-  return putJson<SaltMasterItem[]>("/v1/master-data/salts", { items: salts });
-}
 
-export async function getBackendMedicines(): Promise<JsonResult<DiscoveryMedicine[]>> {
-  return getJson<DiscoveryMedicine[]>("/v1/master-data/medicines");
-}
 
-export async function saveBackendMedicines(
-  medicines: DiscoveryMedicine[]
-): Promise<JsonResult<DiscoveryMedicine[]>> {
-  return putJson<DiscoveryMedicine[]>("/v1/master-data/medicines", {
-    items: medicines,
-  });
-}
+

@@ -1,6 +1,6 @@
 "use client";
 
-import { isDefaultSalt, type SaltMasterItem } from "@/shared/crm/store/salts-master";
+import type { SaltMasterItem } from "@/shared/crm/store/salts-master";
 import { useCrm } from "@/shared/crm/store/crm-context";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
@@ -27,8 +27,6 @@ export default function SaltsSettingsPage() {
     addSalt,
     updateSalt,
     deleteSalt,
-    resetSalt,
-    resetAllSalts,
   } = useCrm();
 
   const [selectedId, setSelectedId] = useState(salts[0]?.id ?? "");
@@ -106,48 +104,51 @@ export default function SaltsSettingsPage() {
     return !saltEquals(draft, savedSalt);
   }, [draft, savedSalt]);
 
-  const isBuiltIn = savedSalt ? isDefaultSalt(savedSalt.id) : false;
   const medicineCount = savedSalt
     ? (medicineCountBySalt.get(savedSalt.id) ?? 0)
     : 0;
   const leadCount = draft ? (leadCountBySaltName.get(draft.name) ?? 0) : 0;
   const canDelete =
     savedSalt &&
-    !isBuiltIn &&
     medicineCount === 0 &&
     (leadCountBySaltName.get(savedSalt.name) ?? 0) === 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!draft || !isDirty) return;
-    updateSalt(draft.id, {
+    setDeleteError("");
+    const ok = await updateSalt(draft.id, {
       name: draft.name.trim() || savedSalt?.name || "Untitled salt",
     });
+    if (!ok) {
+      setDeleteError("Could not save. Your change was not applied.");
+      return;
+    }
     setSavedFlash(true);
     window.setTimeout(() => setSavedFlash(false), 2000);
   };
 
-  const handleAdd = () => {
-    const id = addSalt();
+  const handleAdd = async () => {
+    setDeleteError("");
+    const id = await addSalt();
+    if (!id) {
+      setDeleteError("Could not create the salt. Nothing was saved.");
+      return;
+    }
     setSelectedId(id);
     setSearch("");
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedId) return;
     setDeleteError("");
-    const ok = deleteSalt(selectedId);
+    const ok = await deleteSalt(selectedId);
     if (!ok) {
       setDeleteError(
         medicineCount > 0
           ? "Cannot delete — medicines are linked to this salt."
-          : "Cannot delete this salt."
+          : "Could not delete this salt."
       );
     }
-  };
-
-  const handleReset = () => {
-    if (!selectedId || !isBuiltIn) return;
-    resetSalt(selectedId);
   };
 
   if (!hydrated || !draft) {
@@ -165,7 +166,8 @@ export default function SaltsSettingsPage() {
           <div className="min-w-0 flex-1 basis-full lg:basis-auto">
             <h5 className="box-title mb-0 before:!hidden">Salts Master</h5>
             <p className="text-[0.75rem] text-textmuted mb-0 mt-1">
-              API salts used in Lead Discovery matching and lead records.
+              API salts used in Lead Discovery matching and lead records. Shared
+              across the team — edits apply to everyone.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 ms-auto">
@@ -182,13 +184,6 @@ export default function SaltsSettingsPage() {
                 Unsaved
               </span>
             )}
-            <button
-              type="button"
-              className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-              onClick={resetAllSalts}
-            >
-              Reset all
-            </button>
             <Link
               href="/lead-discovery"
               className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
@@ -239,14 +234,13 @@ export default function SaltsSettingsPage() {
                       <th className="!w-10 !px-2">#</th>
                       <th className="!px-2">Salt name</th>
                       <th className="!w-16 !px-2 text-center">Meds</th>
-                      <th className="!w-20 !px-2">Type</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedSalts.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={4}
+                          colSpan={3}
                           className="text-center text-textmuted !py-6 !px-2"
                         >
                           No salts match your search
@@ -276,17 +270,6 @@ export default function SaltsSettingsPage() {
                               <span className="badge bg-light text-defaulttextcolor text-[0.65rem]">
                                 {medCount}
                               </span>
-                            </td>
-                            <td className="!px-2">
-                              {isDefaultSalt(salt.id) ? (
-                                <span className="text-[0.6875rem] text-textmuted">
-                                  Built-in
-                                </span>
-                              ) : (
-                                <span className="badge bg-primary/10 text-primary text-[0.65rem]">
-                                  Custom
-                                </span>
-                              )}
                             </td>
                           </tr>
                         );
@@ -380,36 +363,21 @@ export default function SaltsSettingsPage() {
                     <span className="badge bg-light text-defaulttextcolor text-[0.75rem]">
                       {leadCount} active leads
                     </span>
-                    {isBuiltIn && (
-                      <span className="badge bg-secondary/10 text-secondary text-[0.75rem]">
-                        Built-in
-                      </span>
-                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {isBuiltIn ? (
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-                        onClick={handleReset}
-                      >
-                        Reset
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-danger !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-                        onClick={handleDelete}
-                        disabled={!canDelete}
-                        title={
-                          !canDelete
-                            ? "Remove linked medicines or leads before deleting"
-                            : undefined
-                        }
-                      >
-                        Delete
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-danger !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
+                      onClick={handleDelete}
+                      disabled={!canDelete}
+                      title={
+                        !canDelete
+                          ? "Remove linked medicines or leads before deleting"
+                          : undefined
+                      }
+                    >
+                      Delete
+                    </button>
                     <button
                       type="button"
                       className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"

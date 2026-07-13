@@ -1,22 +1,8 @@
+/** A row in the shared salt catalogue. No owner — one list for the whole team. */
 export type SaltMasterItem = {
   id: string;
   name: string;
 };
-
-/** Salts are loaded from Excel via /v1/master-data — no static defaults. */
-export const DEFAULT_SALTS: SaltMasterItem[] = [];
-
-export function cloneDefaultSalts(): SaltMasterItem[] {
-  return [];
-}
-
-export function getDefaultSalt(_id: string): SaltMasterItem | undefined {
-  return undefined;
-}
-
-export function isDefaultSalt(_id: string): boolean {
-  return false;
-}
 
 export function createBlankSalt(id: string): SaltMasterItem {
   return {
@@ -24,3 +10,10 @@ export function createBlankSalt(id: string): SaltMasterItem {
     name: "Untitled salt",
   };
 }
+
+// Removed: DEFAULT_SALTS / cloneDefaultSalts / getDefaultSalt / isDefaultSalt.
+// They were stubs — isDefaultSalt() always returned false, getDefaultSalt()
+// always returned undefined — so the "built-in vs custom" distinction they
+// implied never existed (every salt rendered as "Custom"), resetSalt() was a
+// permanent no-op, and resetAllSalts() emptied the list, which the whole-array
+// PUT then turned into a deleteMany of the entire catalogue.

@@ -2,9 +2,6 @@ import type { DiscoveryMedicine } from "../lead-discovery/discovery-catalog";
 
 export type { DiscoveryMedicine };
 
-/** Medicines are loaded from Excel via /v1/master-data — no static defaults. */
-export const DEFAULT_MEDICINES: DiscoveryMedicine[] = [];
-
 export const DOSAGE_FORM_OPTIONS = [
   "API",
   "Tablet",
@@ -19,18 +16,6 @@ export const DOSAGE_FORM_OPTIONS = [
   "Drops",
 ] as const;
 
-export function cloneDefaultMedicines(): DiscoveryMedicine[] {
-  return [];
-}
-
-export function getDefaultMedicine(_id: string): DiscoveryMedicine | undefined {
-  return undefined;
-}
-
-export function isDefaultMedicine(_id: string): boolean {
-  return false;
-}
-
 export function createBlankMedicine(
   id: string,
   saltId: string
@@ -42,3 +27,6 @@ export function createBlankMedicine(
     dosageForm: "API",
   };
 }
+
+// Removed: DEFAULT_MEDICINES / cloneDefaultMedicines / getDefaultMedicine /
+// isDefaultMedicine — the same dead stubs as in salts-master.ts.

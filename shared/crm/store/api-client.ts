@@ -70,6 +70,39 @@ export async function apiGet<T>(path: string): Promise<JsonResult<T>> {
   }
 }
 
+/**
+ * Per-item writes (POST / PATCH / DELETE). Lives here rather than in outlook-api
+ * so it inherits handleUnauthorized — outlook-api's own postJson has no 401
+ * handling, so a write through it would silently fail on an expired session.
+ */
+export async function apiSend<T>(
+  method: "POST" | "PATCH" | "DELETE",
+  path: string,
+  payload?: unknown
+): Promise<JsonResult<T>> {
+  try {
+    const res = await fetchWithTimeout(`${BACKEND_BASE}${path}`, {
+      method,
+      headers: authHeaders(),
+      ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+    });
+    if (!res.ok) {
+      if (handleUnauthorized(res.status)) {
+        return { live: false, error: "Session expired. Please sign in again." };
+      }
+      const body = await res.json().catch(() => ({}));
+      const message =
+        (body as { error?: string }).error ?? `Request failed (${res.status})`;
+      return { live: false, error: message };
+    }
+    // DELETE returns 204 with no body.
+    if (res.status === 204) return { live: true, data: undefined as T };
+    return { live: true, data: (await res.json()) as T };
+  } catch (err) {
+    return { live: false, error: normalizeFetchError(err) };
+  }
+}
+
 export async function apiPut<T>(
   path: string,
   payload: unknown

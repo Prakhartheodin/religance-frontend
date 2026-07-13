@@ -50,6 +50,25 @@ export const CHECKS = [
     why: "Without this, an expired token renders an empty CRM instead of a login prompt.",
     fail: () => !grep("shared/crm/store/api-client.ts", /401/),
   },
+  {
+    name: "F5 no whole-array catalogue write",
+    why: "Saving the whole salt/medicine array deletes everything it omits, and the boot path fired it on every login — which is what duplicated the catalogue per user. Per-item writes only.",
+    fail: () =>
+      grep("shared/crm/store/crm-context.tsx", /saveBackend(Salts|Medicines)/) ||
+      grep("shared/crm/store/outlook-api.ts", /saveBackend(Salts|Medicines)/) ||
+      grep("shared/crm/store/catalogue-api.ts", /saveBackend(Salts|Medicines)/) ||
+      grep("../religence-backend/src/routes/master-data.routes.ts", /\.put\(/),
+  },
+  {
+    name: "F6 no catalogue reset, no dead master stubs",
+    why: "'Reset all' set the catalogue to [] and the array write then deleted every row. isDefaultSalt()/getDefaultSalt() were hardcoded stubs that faked a built-in/custom distinction which never existed.",
+    fail: () =>
+      grep("shared/crm/store/crm-context.tsx", /reset(All)?(Salts|Medicines)/) ||
+      grep("shared/crm/settings/salts-settings-page.tsx", /resetAllSalts|isDefaultSalt/) ||
+      grep("shared/crm/settings/medicines-settings-page.tsx", /resetAllMedicines|isDefaultMedicine/) ||
+      grep("shared/crm/store/salts-master.ts", /export function (isDefaultSalt|getDefaultSalt|cloneDefaultSalts)/) ||
+      grep("shared/crm/store/medicines-master.ts", /export function (isDefaultMedicine|getDefaultMedicine|cloneDefaultMedicines)/),
+  },
 ];
 
 // Only run the checks when invoked directly, so the helpers stay importable.

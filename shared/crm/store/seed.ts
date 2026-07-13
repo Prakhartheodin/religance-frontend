@@ -1,7 +1,5 @@
 import type { CrmState } from "./types";
 import { cloneDefaultEmailTemplates } from "./email-templates";
-import { cloneDefaultMedicines } from "./medicines-master";
-import { cloneDefaultSalts } from "./salts-master";
 
 /** Empty CRM — real data comes from Mongo + Outlook after user activity. */
 export function createInitialCrmState(): CrmState {
@@ -18,7 +16,8 @@ export function createInitialCrmState(): CrmState {
     outlookEmail: null,
     outlookAccounts: [],
     emailTemplates: cloneDefaultEmailTemplates(),
-    salts: cloneDefaultSalts(),
-    medicines: cloneDefaultMedicines(),
+    // Shared catalogue — loaded from Mongo on boot, never seeded locally.
+    salts: [],
+    medicines: [],
   };
 }
