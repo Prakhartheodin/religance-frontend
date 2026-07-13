@@ -225,6 +225,22 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const importedMasterLoadedRef = useRef(false);
   const crmLoadedRef = useRef(false);
   const crmSyncedRef = useRef(false);
+  // The ids each entity was authoritative about at last sync (loaded + created).
+  // Sent with every save so the server scopes deletes to these — a stale second
+  // tab can't delete a record another tab created that it never loaded.
+  const baseIdsRef = useRef<
+    Record<
+      "companies" | "contacts" | "leads" | "deals" | "timeline" | "emailMeta",
+      string[]
+    >
+  >({
+    companies: [],
+    contacts: [],
+    leads: [],
+    deals: [],
+    timeline: [],
+    emailMeta: [],
+  });
   const templatesLoadedRef = useRef(false);
   const templatesSyncedRef = useRef(false);
   const authUserRef = useRef(getUser()?.id ?? "");
@@ -266,6 +282,14 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       importedMasterLoadedRef.current = false;
       crmLoadedRef.current = false;
       crmSyncedRef.current = false;
+      baseIdsRef.current = {
+        companies: [],
+        contacts: [],
+        leads: [],
+        deals: [],
+        timeline: [],
+        emailMeta: [],
+      };
       templatesLoadedRef.current = false;
       templatesSyncedRef.current = false;
       setMasterDataSynced(false);
@@ -364,6 +388,14 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         // Re-apply the overlay to whatever Outlook already synced into `emails`.
         emails: applyEmailMeta(prev.emails, emailMeta),
       }));
+      baseIdsRef.current = {
+        companies: companies.map((c) => c.id),
+        contacts: contacts.map((c) => c.id),
+        leads: leads.map((l) => l.id),
+        deals: deals.map((d) => d.id),
+        timeline: timeline.map((t) => t.id),
+        emailMeta: emailMeta.map((e) => e.id),
+      };
       crmSyncedRef.current = true;
     };
 
@@ -415,41 +447,74 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   }, [state.emailTemplates]);
 
   // Persist entity edits to Mongo (debounced) once the initial sync has run.
-  useEffect(() => {
-    if (!crmSyncedRef.current) return;
-    const t = window.setTimeout(() => void saveBackendCompanies(state.companies), 800);
-    return () => window.clearTimeout(t);
-  }, [state.companies]);
+  // Sends the current baseIds so the server scopes deletes; on success the ids
+  // just written become the new baseline (delete-by-omission still works within
+  // this tab, but ids this tab never loaded stay protected).
+  const persist = useCallback(
+    async <T extends { id: string }>(
+      key: keyof typeof baseIdsRef.current,
+      items: T[],
+      save: (items: T[], baseIds: string[]) => Promise<{ live: boolean }>
+    ): Promise<void> => {
+      const res = await save(items, baseIdsRef.current[key]);
+      if (res.live) baseIdsRef.current[key] = items.map((i) => i.id);
+    },
+    []
+  );
 
   useEffect(() => {
     if (!crmSyncedRef.current) return;
-    const t = window.setTimeout(() => void saveBackendContacts(state.contacts), 800);
+    const t = window.setTimeout(
+      () => void persist("companies", state.companies, saveBackendCompanies),
+      800
+    );
     return () => window.clearTimeout(t);
-  }, [state.contacts]);
+  }, [state.companies, persist]);
 
   useEffect(() => {
     if (!crmSyncedRef.current) return;
-    const t = window.setTimeout(() => void saveBackendLeads(state.leads), 800);
+    const t = window.setTimeout(
+      () => void persist("contacts", state.contacts, saveBackendContacts),
+      800
+    );
     return () => window.clearTimeout(t);
-  }, [state.leads]);
+  }, [state.contacts, persist]);
 
   useEffect(() => {
     if (!crmSyncedRef.current) return;
-    const t = window.setTimeout(() => void saveBackendDeals(state.deals), 800);
+    const t = window.setTimeout(
+      () => void persist("leads", state.leads, saveBackendLeads),
+      800
+    );
     return () => window.clearTimeout(t);
-  }, [state.deals]);
+  }, [state.leads, persist]);
 
   useEffect(() => {
     if (!crmSyncedRef.current) return;
-    const t = window.setTimeout(() => void saveBackendTimeline(state.timeline), 800);
+    const t = window.setTimeout(
+      () => void persist("deals", state.deals, saveBackendDeals),
+      800
+    );
     return () => window.clearTimeout(t);
-  }, [state.timeline]);
+  }, [state.deals, persist]);
 
   useEffect(() => {
     if (!crmSyncedRef.current) return;
-    const t = window.setTimeout(() => void saveBackendEmailMeta(state.emailMeta), 800);
+    const t = window.setTimeout(
+      () => void persist("timeline", state.timeline, saveBackendTimeline),
+      800
+    );
     return () => window.clearTimeout(t);
-  }, [state.emailMeta]);
+  }, [state.timeline, persist]);
+
+  useEffect(() => {
+    if (!crmSyncedRef.current) return;
+    const t = window.setTimeout(
+      () => void persist("emailMeta", state.emailMeta, saveBackendEmailMeta),
+      800
+    );
+    return () => window.clearTimeout(t);
+  }, [state.emailMeta, persist]);
 
   const patch = useCallback((fn: (prev: CrmState) => CrmState) => {
     setState(fn);

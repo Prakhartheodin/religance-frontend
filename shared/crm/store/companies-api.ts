@@ -9,7 +9,8 @@ export async function getBackendCompanies(): Promise<JsonResult<CrmCompany[]>> {
 }
 
 export async function saveBackendCompanies(
-  companies: CrmCompany[]
+  companies: CrmCompany[],
+  baseIds: string[]
 ): Promise<JsonResult<CrmCompany[]>> {
-  return apiPut<CrmCompany[]>("/v1/crm/companies", { items: companies });
+  return apiPut<CrmCompany[]>("/v1/crm/companies", { items: companies, baseIds });
 }

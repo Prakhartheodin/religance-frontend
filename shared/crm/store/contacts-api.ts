@@ -9,7 +9,8 @@ export async function getBackendContacts(): Promise<JsonResult<CrmContact[]>> {
 }
 
 export async function saveBackendContacts(
-  contacts: CrmContact[]
+  contacts: CrmContact[],
+  baseIds: string[]
 ): Promise<JsonResult<CrmContact[]>> {
-  return apiPut<CrmContact[]>("/v1/crm/contacts", { items: contacts });
+  return apiPut<CrmContact[]>("/v1/crm/contacts", { items: contacts, baseIds });
 }

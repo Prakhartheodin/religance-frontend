@@ -9,7 +9,8 @@ export async function getBackendTimeline(): Promise<JsonResult<CrmTimelineEvent[
 }
 
 export async function saveBackendTimeline(
-  timeline: CrmTimelineEvent[]
+  timeline: CrmTimelineEvent[],
+  baseIds: string[]
 ): Promise<JsonResult<CrmTimelineEvent[]>> {
-  return apiPut<CrmTimelineEvent[]>("/v1/crm/timeline", { items: timeline });
+  return apiPut<CrmTimelineEvent[]>("/v1/crm/timeline", { items: timeline, baseIds });
 }

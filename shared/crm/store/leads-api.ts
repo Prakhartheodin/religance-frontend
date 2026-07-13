@@ -9,7 +9,8 @@ export async function getBackendLeads(): Promise<JsonResult<CrmLead[]>> {
 }
 
 export async function saveBackendLeads(
-  leads: CrmLead[]
+  leads: CrmLead[],
+  baseIds: string[]
 ): Promise<JsonResult<CrmLead[]>> {
-  return apiPut<CrmLead[]>("/v1/crm/leads", { items: leads });
+  return apiPut<CrmLead[]>("/v1/crm/leads", { items: leads, baseIds });
 }

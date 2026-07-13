@@ -10,7 +10,8 @@ export async function getBackendEmailMeta(): Promise<JsonResult<CrmEmailMeta[]>>
 }
 
 export async function saveBackendEmailMeta(
-  meta: CrmEmailMeta[]
+  meta: CrmEmailMeta[],
+  baseIds: string[]
 ): Promise<JsonResult<CrmEmailMeta[]>> {
-  return apiPut<CrmEmailMeta[]>("/v1/crm/emails", { items: meta });
+  return apiPut<CrmEmailMeta[]>("/v1/crm/emails", { items: meta, baseIds });
 }
