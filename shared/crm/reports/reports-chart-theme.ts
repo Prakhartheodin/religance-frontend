@@ -61,7 +61,7 @@ export function baseChartOptions(
       labels: { colors: theme.foreColor },
       fontSize: "11px",
       fontWeight: 500,
-      markers: { size: 5, strokeWidth: 0 },
+      markers: { width: 5, height: 5, strokeWidth: 0 },
     },
     tooltip: {
       theme: theme.isDark ? "dark" : "light",

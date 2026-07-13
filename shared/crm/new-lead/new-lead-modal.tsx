@@ -22,7 +22,7 @@ export function NewLeadModal({ open, onClose }: NewLeadModalProps) {
   const [matchedSalt, setMatchedSalt] = useState("");
   const [matchedMedicine, setMatchedMedicine] = useState("");
   const [dosageForm, setDosageForm] = useState("");
-  const [assignedTo, setAssignedTo] = useState(CURRENT_USER);
+  const [assignedTo, setAssignedTo] = useState<string>(CURRENT_USER);
   const [stage, setStage] = useState<LeadStage>("Saved");
 
   if (!open) return null;

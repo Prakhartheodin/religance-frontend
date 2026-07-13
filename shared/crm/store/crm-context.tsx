@@ -35,7 +35,7 @@ import {
   isDefaultSalt,
   type SaltMasterItem,
 } from "./salts-master";
-import { clearOutlookCache, loadCrmState, resetCrmState, saveCrmState } from "./storage";
+import { createInitialCrmState } from "./seed";
 import type {
   CrmCompany,
   CrmContact,
@@ -79,6 +79,10 @@ import { getBackendLeads, saveBackendLeads } from "./leads-api";
 import { getBackendDeals, saveBackendDeals } from "./deals-api";
 import { isDemoCrmLeads } from "@/shared/crm/store/demo-crm";
 import { getBackendTimeline, saveBackendTimeline } from "./timeline-api";
+import {
+  getBackendEmailTemplates,
+  saveBackendEmailTemplates,
+} from "./templates-api";
 
 export type SaveFromDiscoveryInput = {
   profile: CompanyProfileDetail;
@@ -180,12 +184,14 @@ function extractEmailAddress(raw: string): string {
 }
 
 export function CrmProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<CrmState>(() => loadCrmState());
+  const [state, setState] = useState<CrmState>(createInitialCrmState);
   const [hydrated, setHydrated] = useState(false);
   const importedMasterLoadedRef = useRef(false);
   const masterSyncedRef = useRef(false);
   const crmLoadedRef = useRef(false);
   const crmSyncedRef = useRef(false);
+  const templatesLoadedRef = useRef(false);
+  const templatesSyncedRef = useRef(false);
   const authUserRef = useRef(getUser()?.id ?? "");
   const [authUserId, setAuthUserId] = useState(getUser()?.id ?? "");
   const [masterDataSynced, setMasterDataSynced] = useState(false);
@@ -194,12 +200,12 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   >(null);
 
   useEffect(() => {
-    const loaded = loadCrmState();
+    const initial = createInitialCrmState();
     if (isAuthed()) {
-      loaded.salts = [];
-      loaded.medicines = [];
+      initial.salts = [];
+      initial.medicines = [];
     }
-    setState(loaded);
+    setState(initial);
     setHydrated(true);
     authUserRef.current = getUser()?.id ?? "";
     setAuthUserId(authUserRef.current);
@@ -208,35 +214,33 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
 
+    // Nothing is cached client-side: dropping to the seed state and letting the
+    // Mongo sync effects re-run is the whole of "switch user".
     const reloadForAuthUser = () => {
       const nextUserId = getUser()?.id ?? "";
       if (nextUserId === authUserRef.current) return;
       authUserRef.current = nextUserId;
-      setAuthUserId(nextUserId);
 
-      if (!nextUserId) {
-        setState(clearOutlookCache());
-        return;
+      const next = createInitialCrmState();
+      if (nextUserId) {
+        next.salts = [];
+        next.medicines = [];
       }
+      setState(next);
 
-      const loaded = loadCrmState();
-      loaded.salts = [];
-      loaded.medicines = [];
-      loaded.gmailConnected = false;
-      loaded.outlookAccountId = null;
-      loaded.outlookEmail = null;
-      loaded.outlookAccounts = [];
-      loaded.emails = [];
-      setState(loaded);
+      importedMasterLoadedRef.current = false;
+      masterSyncedRef.current = false;
+      crmLoadedRef.current = false;
+      crmSyncedRef.current = false;
+      templatesLoadedRef.current = false;
+      templatesSyncedRef.current = false;
+      setMasterDataSynced(false);
+      setAuthUserId(nextUserId);
     };
 
     window.addEventListener("religence-auth-change", reloadForAuthUser);
     return () => window.removeEventListener("religence-auth-change", reloadForAuthUser);
   }, [hydrated]);
-
-  useEffect(() => {
-    if (hydrated) saveCrmState(state);
-  }, [state, hydrated]);
 
   useEffect(() => {
     if (!hydrated || importedMasterLoadedRef.current) return;
@@ -313,7 +317,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [hydrated]);
+  }, [hydrated, authUserId]);
 
   // Persist salt/medicine edits to Mongo once the initial sync has run.
   useEffect(() => {
@@ -391,7 +395,43 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [hydrated]);
+  }, [hydrated, authUserId]);
+
+  // Email templates: Mongo is the source of truth. Pull once on hydrate; if the
+  // user has no server doc yet, seed it from the defaults already in state.
+  useEffect(() => {
+    if (!hydrated || templatesLoadedRef.current) return;
+    templatesLoadedRef.current = true;
+    let active = true;
+
+    const syncTemplates = async () => {
+      const res = await getBackendEmailTemplates();
+      if (!active) return;
+
+      if (res.live && res.data.length) {
+        setState((prev) => ({ ...prev, emailTemplates: res.data }));
+      } else if (res.live) {
+        await saveBackendEmailTemplates(state.emailTemplates);
+        if (!active) return;
+      }
+      templatesSyncedRef.current = true;
+    };
+
+    void syncTemplates();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, authUserId]);
+
+  useEffect(() => {
+    if (!templatesSyncedRef.current) return;
+    const t = window.setTimeout(
+      () => void saveBackendEmailTemplates(state.emailTemplates),
+      800
+    );
+    return () => window.clearTimeout(t);
+  }, [state.emailTemplates]);
 
   // Persist entity edits to Mongo (debounced) once the initial sync has run.
   useEffect(() => {
@@ -1114,7 +1154,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   );
 
   const resetStore = useCallback(() => {
-    setState(resetCrmState());
+    setState(createInitialCrmState());
     setPendingComposeLeadId(null);
   }, []);
 
@@ -1429,7 +1469,6 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       switchOutlookAccount,
       getCompany: (id) => state.companies.find((c) => c.id === id),
       getContact: (id) => state.contacts.find((c) => c.id === id),
-      deleteContact,
       getLead: (id) => state.leads.find((l) => l.id === id),
       getLeadEmails: (leadId) =>
         state.emails.filter((e) => e.leadId === leadId),

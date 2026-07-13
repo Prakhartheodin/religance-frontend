@@ -89,4 +89,10 @@ const mapStateToProps = (state: any) => ({
   local_varaiable: state
 });
 
-export default connect(mapStateToProps, {ThemeChanger})(Layout);
+const ConnectedLayout = connect(mapStateToProps, {ThemeChanger})(Layout);
+
+// Next's App Router requires the default export to accept only `children`;
+// a connect()-wrapped component exposes extra props and fails that contract.
+export default function RootLayout({children}: {children: React.ReactNode}) {
+  return <ConnectedLayout>{children}</ConnectedLayout>;
+}

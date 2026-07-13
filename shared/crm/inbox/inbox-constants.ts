@@ -1,14 +1,16 @@
 import type { InboxTag } from "./inbox-utils";
 
+// `badge` is spelled out on every folder (undefined where there is none) so the
+// union stays uniform and `folder.badge` type-checks at the call site.
 export const INBOX_FOLDERS = [
   { name: "All Mails", icon: "ri-mail-line", badge: "purple" as const },
   { name: "Inbox", icon: "ri-inbox-line", badge: "purple-soft" as const },
-  { name: "Sent", icon: "ri-send-plane-line" },
-  { name: "Drafts", icon: "ri-draft-line" },
+  { name: "Sent", icon: "ri-send-plane-line", badge: undefined },
+  { name: "Drafts", icon: "ri-draft-line", badge: undefined },
   { name: "Spam", icon: "ri-spam-2-line", badge: "danger" as const },
   { name: "Important", icon: "ri-flag-line", badge: "warning" as const },
-  { name: "Trash", icon: "ri-delete-bin-line" },
-  { name: "Archive", icon: "ri-archive-line" },
+  { name: "Trash", icon: "ri-delete-bin-line", badge: undefined },
+  { name: "Archive", icon: "ri-archive-line", badge: undefined },
   { name: "Starred", icon: "ri-star-line", badge: "warning" as const },
 ] as const;
 
