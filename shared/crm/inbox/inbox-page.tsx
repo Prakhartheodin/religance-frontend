@@ -8,7 +8,11 @@ import Seo from "@/shared/layout-components/seo/seo";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { InboxCompose } from "./inbox-compose";
 import { InboxContactsRail } from "./inbox-contacts-rail";
-import { InboxDetailEmpty, InboxDetailPanel } from "./inbox-detail";
+import {
+  InboxDetailEmpty,
+  InboxDetailLoading,
+  InboxDetailPanel,
+} from "./inbox-detail";
 import { type InboxFolderName } from "./inbox-constants";
 import { InboxListPanel } from "./inbox-list";
 import { InboxSidebar } from "./inbox-sidebar";
@@ -97,6 +101,9 @@ export default function InboxPage() {
   const [forwardTo, setForwardTo] = useState("");
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [connectingOutlook, setConnectingOutlook] = useState(false);
+  const [switchingAccountId, setSwitchingAccountId] = useState<string | null>(
+    null
+  );
   const [authError, setAuthError] = useState<string | null>(null);
 
   const getLead = useCallback(
@@ -515,13 +522,18 @@ export default function InboxPage() {
   }, [disconnectOutlook, outlookAccountId]);
 
   const handleSwitchOutlookAccount = useCallback(
-    (accountId: string) => {
-      if (accountId === outlookAccountId) return;
-      void switchOutlookAccount(accountId);
+    async (accountId: string) => {
+      if (accountId === outlookAccountId || switchingAccountId) return;
+      setSwitchingAccountId(accountId);
       setSelectedId(null);
       setReplyText("");
+      try {
+        await switchOutlookAccount(accountId);
+      } finally {
+        setSwitchingAccountId(null);
+      }
     },
-    [outlookAccountId, switchOutlookAccount]
+    [outlookAccountId, switchingAccountId, switchOutlookAccount]
   );
 
   if (checkingConnection) {
@@ -687,9 +699,18 @@ export default function InboxPage() {
                 onToggleCheck={toggleCheck}
                 onToggleCheckAll={toggleCheckAll}
                 allChecked={allChecked}
+                loading={Boolean(switchingAccountId)}
               />
 
-              {active && activeMeta ? (
+              {switchingAccountId ? (
+                <InboxDetailLoading
+                  email={
+                    (outlookAccounts ?? []).find(
+                      (a) => a.id === switchingAccountId
+                    )?.email ?? null
+                  }
+                />
+              ) : active && activeMeta ? (
                 <InboxDetailPanel
                   active={active}
                   meta={activeMeta}
@@ -741,6 +762,7 @@ export default function InboxPage() {
                 onSwitchAccount={handleSwitchOutlookAccount}
                 onConnectAccount={handleConnectOutlook}
                 connecting={connectingOutlook}
+                switchingAccountId={switchingAccountId}
               />
             </div>
           </div>

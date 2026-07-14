@@ -9,12 +9,14 @@ export function InboxContactsRail({
   onSwitchAccount,
   onConnectAccount,
   connecting,
+  switchingAccountId = null,
 }: {
   accounts: OutlookMailboxAccount[];
   activeAccountId: string | null;
-  onSwitchAccount: (accountId: string) => void;
+  onSwitchAccount: (accountId: string) => void | Promise<void>;
   onConnectAccount: () => void;
   connecting?: boolean;
+  switchingAccountId?: string | null;
 }) {
   const visible = accounts.slice(0, 12);
 
@@ -33,27 +35,38 @@ export function InboxContactsRail({
           <i className="ri-add-line"></i>
         )}
       </button>
-      {visible.map((account) => (
-        <button
-          key={account.id}
-          type="button"
-          className={`crm-inbox-contacts-item ${account.id === activeAccountId ? "is-active" : ""}`}
-          title={account.email}
-          onClick={() => onSwitchAccount(account.id)}
-        >
-          <span className="crm-inbox-contacts-avatar-wrap">
-            <InboxAvatar
-              name={(account.email.split("@")[0] || account.email).toUpperCase()}
-              size="sm"
-            />
-            <span
-              className={`crm-inbox-online-dot ${
-                account.id === activeAccountId ? "is-active" : ""
-              }`}
-            />
-          </span>
-        </button>
-      ))}
+      {visible.map((account) => {
+        const isSwitching = account.id === switchingAccountId;
+        return (
+          <button
+            key={account.id}
+            type="button"
+            className={`crm-inbox-contacts-item ${account.id === activeAccountId ? "is-active" : ""}`}
+            title={account.email}
+            onClick={() => onSwitchAccount(account.id)}
+            disabled={Boolean(switchingAccountId)}
+            aria-busy={isSwitching}
+          >
+            <span className="crm-inbox-contacts-avatar-wrap">
+              <InboxAvatar
+                name={(account.email.split("@")[0] || account.email).toUpperCase()}
+                size="sm"
+              />
+              {isSwitching ? (
+                <span
+                  className="spinner-border spinner-border-sm crm-inbox-contacts-spinner"
+                  aria-hidden
+                />
+              ) : null}
+              <span
+                className={`crm-inbox-online-dot ${
+                  account.id === activeAccountId ? "is-active" : ""
+                }`}
+              />
+            </span>
+          </button>
+        );
+      })}
     </aside>
   );
 }

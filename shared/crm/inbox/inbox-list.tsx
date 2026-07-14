@@ -33,9 +33,11 @@ export function InboxListPanel({
   onToggleCheck,
   onToggleCheckAll,
   allChecked,
+  loading = false,
 }: {
   gmailConnected: boolean;
   onConnect: () => void;
+  loading?: boolean;
   activeFolder: InboxFolderName;
   searchQuery: string;
   onSearchChange: (q: string) => void;
@@ -94,6 +96,8 @@ export function InboxListPanel({
               </button>
             }
           />
+        ) : loading ? (
+          <InboxListSkeleton />
         ) : emails.length === 0 ? (
           <InboxEmptyState
             icon="ri-inbox-archive-line"
@@ -160,6 +164,36 @@ export function InboxListPanel({
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Mirrors the real row's structure so the list doesn't reflow when mail lands.
+ * A skeleton, not a spinner: the switch usually resolves in about a second, and
+ * a shape that matches the content reads as "loading" without a blocking overlay.
+ */
+function InboxListSkeleton() {
+  return (
+    <div
+      className="crm-inbox-list-skeleton"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading messages"
+    >
+      {Array.from({ length: 7 }).map((_, i) => (
+        <div key={i} className="crm-inbox-list-item crm-inbox-skeleton-item">
+          <span className="crm-inbox-skeleton-avatar crm-inbox-shimmer" />
+          <div className="crm-inbox-skeleton-body">
+            <div className="crm-inbox-skeleton-row">
+              <span className="crm-inbox-shimmer crm-inbox-skeleton-sender" />
+              <span className="crm-inbox-shimmer crm-inbox-skeleton-time" />
+            </div>
+            <span className="crm-inbox-shimmer crm-inbox-skeleton-subject" />
+            <span className="crm-inbox-shimmer crm-inbox-skeleton-preview" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -420,3 +420,20 @@ export function InboxDetailEmpty() {
     </div>
   );
 }
+
+export function InboxDetailLoading({ email }: { email?: string | null }) {
+  return (
+    <div
+      className="crm-inbox-detail-empty"
+      role="status"
+      aria-live="polite"
+    >
+      <span
+        className="spinner-border spinner-border-sm crm-inbox-detail-spinner"
+        aria-hidden
+      />
+      <h3>Loading mailbox</h3>
+      <p>{email ? `Syncing ${email}` : "Syncing your latest threads."}</p>
+    </div>
+  );
+}

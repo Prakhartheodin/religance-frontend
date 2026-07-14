@@ -253,6 +253,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const templatesLoadedRef = useRef(false);
   const templatesSyncedRef = useRef(false);
   const authUserRef = useRef(getUser()?.id ?? "");
+  const outlookAccountIdRef = useRef<string | null | undefined>(null);
+  const outlookSyncSeqRef = useRef(0);
   const [authUserId, setAuthUserId] = useState(getUser()?.id ?? "");
   const [masterDataSynced, setMasterDataSynced] = useState(false);
   const [pendingComposeLeadId, setPendingComposeLeadId] = useState<
@@ -1080,8 +1082,13 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
   const syncOutlookInbox = useCallback(
     async (preferredAccountId?: string | null, preferredEmail?: string | null) => {
+      // Newest sync wins. Switching A -> B -> A can leave an older sync in
+      // flight; without this its stale threads would land on top of B's.
+      const seq = ++outlookSyncSeqRef.current;
+      const isStale = () => seq !== outlookSyncSeqRef.current;
+
       const accountsRes = await listOutlookAccounts();
-      if (!accountsRes.live) return;
+      if (!accountsRes.live || isStale()) return;
       const accounts: OutlookAccount[] = [...accountsRes.data];
       const preferredEmailNorm = (preferredEmail ?? "").trim().toLowerCase();
       const account =
@@ -1091,8 +1098,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         (preferredEmailNorm
           ? accounts.find((a) => a.email.toLowerCase() === preferredEmailNorm)
           : null) ??
-        (state.outlookAccountId
-          ? accounts.find((a) => a.id === state.outlookAccountId)
+        (outlookAccountIdRef.current
+          ? accounts.find((a) => a.id === outlookAccountIdRef.current)
           : null) ??
         accounts.find((a) => a.status === "active") ??
         accounts[0];
@@ -1108,6 +1115,18 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Select the account before the threads land. The mailbox takes a second
+      // to fetch; without this the rail keeps the old account highlighted the
+      // whole time and the click reads as "nothing happened".
+      patch((prev) => ({
+        ...prev,
+        gmailConnected: true,
+        outlookAccountId: account.id,
+        outlookEmail: account.email,
+        outlookAccounts: accounts,
+        ...(account.id === prev.outlookAccountId ? {} : { emails: [] }),
+      }));
+
       const folderSources = [
         { labelId: "INBOX", mailboxLabel: "INBOX" },
         { labelId: "SENT", mailboxLabel: "SENT" },
@@ -1118,13 +1137,16 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         { thread: OutlookThreadItem; mailboxLabels: Set<string> }
       >();
 
-      for (const source of folderSources) {
-        const folderThreadsRes = await listOutlookThreads(
-          account.id,
-          25,
-          source.labelId
-        );
-        if (!folderThreadsRes.live) continue;
+      const folderResults = await Promise.all(
+        folderSources.map((source) =>
+          listOutlookThreads(account.id, 25, source.labelId)
+        )
+      );
+      if (isStale()) return;
+
+      folderSources.forEach((source, i) => {
+        const folderThreadsRes = folderResults[i];
+        if (!folderThreadsRes.live) return;
         for (const thread of folderThreadsRes.data.threads) {
           const key = thread.threadId || thread.id;
           const existing = threadBuckets.get(key);
@@ -1142,7 +1164,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
             existing.thread = thread;
           }
         }
-      }
+      });
 
       if (threadBuckets.size === 0) {
         const allThreadsRes = await listOutlookThreads(account.id, 25);
@@ -1175,10 +1197,19 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         })
         .slice(0, 25);
 
+      // One request per thread, but all in flight at once. Serially this was
+      // ~25 round trips to Graph back-to-back — the bulk of the switch delay.
+      const threadDetails = await Promise.all(
+        rankedThreads.map((item) =>
+          getOutlookThread(account.id, item.thread.threadId || item.thread.id)
+        )
+      );
+      if (isStale()) return;
+
       const syncedEmails: CrmEmail[] = [];
-      for (const item of rankedThreads) {
+      rankedThreads.forEach((item, i) => {
         const threadId = item.thread.threadId || item.thread.id;
-        const detailRes = await getOutlookThread(account.id, threadId);
+        const detailRes = threadDetails[i];
         const messages = detailRes.live ? [...detailRes.data.messages] : [];
         messages.sort((a, b) => {
           const ta = new Date(a.date ?? 0).getTime();
@@ -1240,7 +1271,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           sentAt: latestMessage?.date ?? item.thread.date ?? todayIso(),
           attachments,
         });
-      }
+      });
 
       syncedEmails.sort((a, b) => b.sentAt.localeCompare(a.sentAt));
 
@@ -1253,8 +1284,16 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         emails: applyEmailMeta(syncedEmails, prev.emailMeta),
       }));
     },
-    [patch, state.outlookAccountId]
+    // Deliberately not depending on state.outlookAccountId: the selected
+    // account is read through a ref instead. As a dependency it changed this
+    // callback's identity on every sync, which re-fired the bootstrap effect
+    // that depends on it, which synced again — 2-3x the requests per switch.
+    [patch]
   );
+
+  useEffect(() => {
+    outlookAccountIdRef.current = state.outlookAccountId;
+  }, [state.outlookAccountId]);
 
   useEffect(() => {
     if (!hydrated || !authUserId) return;

@@ -34,6 +34,43 @@ function ensureTabDefaults() {
   });
 }
 
+/**
+ * Preline registers window `resize`/`scroll` handlers at import time that read
+ * `window.$hs*Collection.length`, but only creates those globals inside the
+ * `load`-event autoInit — which never fires when the module is imported after
+ * the page has loaded. Seed them so the handlers can't throw.
+ * ponytail: empty arrays, autoInit repopulates them.
+ */
+function seedCollections() {
+  const w = window as unknown as Record<string, unknown[]>;
+  for (const name of COLLECTIONS) {
+    w[name] ??= [];
+  }
+}
+
+const COLLECTIONS = [
+  "$hsAccordionCollection",
+  "$hsCarouselCollection",
+  "$hsCollapseCollection",
+  "$hsComboBoxCollection",
+  "$hsCopyMarkupCollection",
+  "$hsDropdownCollection",
+  "$hsInputNumberCollection",
+  "$hsOverlayCollection",
+  "$hsPinInputCollection",
+  "$hsRemoveElementCollection",
+  "$hsScrollspyCollection",
+  "$hsSearchByJsonCollection",
+  "$hsSelectCollection",
+  "$hsStepperCollection",
+  "$hsStrongPasswordCollection",
+  "$hsTabsCollection",
+  "$hsThemeSwitchCollection",
+  "$hsToggleCountCollection",
+  "$hsTogglePasswordCollection",
+  "$hsTooltipCollection",
+];
+
 function safeAutoInit() {
   if (typeof window === "undefined" || !window.HSStaticMethods?.autoInit) {
     return;
@@ -57,6 +94,7 @@ export default function PrelineScript() {
     const boot = async () => {
       if (!loadedRef.current) {
         await import("preline/preline");
+        seedCollections();
         loadedRef.current = true;
       }
 
