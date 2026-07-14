@@ -2,7 +2,8 @@
 
 import { applyTemplate, useCrm } from "@/shared/crm/store/crm-context";
 import { getUserDisplayName } from "@/shared/auth/auth-client";
-import type { CrmEmail } from "@/shared/crm/store/types";
+import type { CrmEmail, CrmEmailAttachment } from "@/shared/crm/store/types";
+import { downloadOutlookAttachment } from "@/shared/crm/store/outlook-api";
 import Seo from "@/shared/layout-components/seo/seo";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { InboxCompose } from "./inbox-compose";
@@ -89,6 +90,11 @@ export default function InboxPage() {
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [sentFlash, setSentFlash] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [replyMode, setReplyMode] = useState<"reply" | "replyAll" | "forward">(
+    "reply"
+  );
+  const [forwardTo, setForwardTo] = useState("");
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [connectingOutlook, setConnectingOutlook] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -199,6 +205,12 @@ export default function InboxPage() {
     const t = window.setTimeout(() => setSentFlash(false), 3200);
     return () => window.clearTimeout(t);
   }, [sentFlash]);
+
+  useEffect(() => {
+    setSendError(null);
+    setReplyMode("reply");
+    setForwardTo("");
+  }, [selectedId]);
 
   useEffect(() => {
     if (!composeOpen || emailTemplates.length === 0) return;
@@ -386,37 +398,98 @@ export default function InboxPage() {
     }
   };
 
-  const handleSendReply = () => {
-    if (!active || !replyText.trim()) return;
+  const handleSendReply = async () => {
+    if (!active) return;
+    const isForward = replyMode === "forward";
+    if (isForward ? !forwardTo.trim() : !replyText.trim()) return;
+
+    // Only synced emails carry a real Outlook message id; locally composed
+    // ones ("em-…") and synthetic ids ("outlook-…") can't use the threading
+    // endpoints, so they fall back to a plain send.
+    const threadable =
+      !active.id.startsWith("em-") && !active.id.startsWith("outlook-");
+
     setSending(true);
-    const to =
-      active.direction === "inbound" ? active.fromEmail : active.toEmail;
-    sendCrmEmail({
-      leadId: active.leadId,
-      toEmail: to,
-      subject: active.subject.startsWith("Re:")
-        ? active.subject
-        : `Re: ${active.subject}`,
-      body: replyText.trim(),
-    });
-    setReplyText("");
+    setSendError(null);
+
+    let error: string | null;
+    if (isForward) {
+      // Without a message id the backend can't quote the original for us,
+      // so include it in the composed body.
+      const body = threadable
+        ? replyText.trim()
+        : [
+            replyText.trim(),
+            "---------- Forwarded message ---------",
+            active.body,
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+      error = await sendCrmEmail({
+        leadId: active.leadId,
+        toEmail: forwardTo.trim(),
+        subject: active.subject.startsWith("Fwd:")
+          ? active.subject
+          : `Fwd: ${active.subject}`,
+        body,
+        replyToMessageId: threadable ? active.id : null,
+        mode: "forward",
+      });
+    } else {
+      const to =
+        active.direction === "inbound" ? active.fromEmail : active.toEmail;
+      error = await sendCrmEmail({
+        leadId: active.leadId,
+        toEmail: to,
+        subject: active.subject.startsWith("Re:")
+          ? active.subject
+          : `Re: ${active.subject}`,
+        body: replyText.trim(),
+        replyToMessageId: threadable ? active.id : null,
+        mode: replyMode,
+      });
+    }
     setSending(false);
+    if (error) {
+      // Keep the draft — the user's text is the only copy of it.
+      setSendError(error);
+      return;
+    }
+    setReplyText("");
+    setForwardTo("");
+    setReplyMode("reply");
     setSentFlash(true);
   };
 
-  const handleSendCompose = () => {
+  const handleDownloadAttachment = async (att: CrmEmailAttachment) => {
+    if (!outlookAccountId || !att.attachmentId || !att.messageId) return;
+    const error = await downloadOutlookAttachment({
+      accountId: outlookAccountId,
+      messageId: att.messageId,
+      attachmentId: att.attachmentId,
+      filename: att.filename,
+    });
+    if (error) setSendError(error);
+  };
+
+  const handleSendCompose = async () => {
     const { to, subject, body } = composeDraft;
     if (!to.trim() || !subject.trim() || !body.trim()) return;
     setSending(true);
-    sendCrmEmail({
+    setSendError(null);
+    const error = await sendCrmEmail({
       toEmail: to.trim(),
       subject: subject.trim(),
       body: body.trim(),
     });
+    setSending(false);
+    if (error) {
+      setSendError(error);
+      return;
+    }
     setComposeDraft({ to: "", subject: "", body: "" });
     setComposeOpen(false);
     setActiveFolder("Sent");
-    setSending(false);
     setSentFlash(true);
   };
 
@@ -644,8 +717,14 @@ export default function InboxPage() {
                   replyText={replyText}
                   onReplyChange={setReplyText}
                   onSendReply={handleSendReply}
+                  replyMode={replyMode}
+                  onReplyModeChange={setReplyMode}
+                  forwardTo={forwardTo}
+                  onForwardToChange={setForwardTo}
+                  onDownloadAttachment={handleDownloadAttachment}
                   sending={sending}
                   sentFlash={sentFlash}
+                  sendError={sendError}
                   leads={leads}
                   companies={companies}
                   suggested={suggested}
@@ -684,6 +763,7 @@ export default function InboxPage() {
         }
         onSend={handleSendCompose}
         sending={sending}
+        sendError={sendError}
       />
     </Fragment>
   );

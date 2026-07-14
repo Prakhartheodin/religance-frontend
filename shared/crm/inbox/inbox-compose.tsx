@@ -13,6 +13,7 @@ export function InboxCompose({
   onDraftChange,
   onSend,
   sending,
+  sendError,
 }: {
   open: boolean;
   onClose: () => void;
@@ -23,6 +24,7 @@ export function InboxCompose({
   onDraftChange: (patch: Partial<ComposeDraft>) => void;
   onSend: () => void;
   sending?: boolean;
+  sendError?: string | null;
 }) {
   if (!open) return null;
 
@@ -96,6 +98,13 @@ export function InboxCompose({
             className="crm-inbox-compose-body"
           />
         </div>
+
+        {sendError && (
+          <div className="px-4 pb-2 text-danger text-[0.8rem]" role="alert">
+            <i className="ri-error-warning-fill me-1"></i>
+            {sendError}
+          </div>
+        )}
 
         <div className="crm-inbox-compose-footer">
           <button

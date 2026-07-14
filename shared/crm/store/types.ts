@@ -77,6 +77,15 @@ export type CrmDeal = {
   createdAt: string;
 };
 
+export type CrmEmailAttachment = {
+  filename: string;
+  mimeType: string;
+  size: number;
+  /** Both required to download; absent on locally composed mail. */
+  attachmentId?: string;
+  messageId?: string;
+};
+
 export type CrmEmail = {
   id: string;
   leadId: string | null;
@@ -89,6 +98,7 @@ export type CrmEmail = {
   fromEmail: string;
   toEmail: string;
   sentAt: string;
+  attachments?: CrmEmailAttachment[];
 };
 
 /**

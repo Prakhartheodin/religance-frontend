@@ -2,13 +2,34 @@
 
 import { companyInitials } from "@/shared/crm/active-leads/active-leads-utils";
 import LeadStageBadge from "@/shared/crm/active-leads/lead-stage-badge";
-import type { CrmCompany, CrmEmail, CrmLead } from "@/shared/crm/store/types";
+import type {
+  CrmCompany,
+  CrmEmail,
+  CrmEmailAttachment,
+  CrmLead,
+} from "@/shared/crm/store/types";
 import Link from "next/link";
 import { InboxAvatar } from "./inbox-avatar";
 import { REPLY_TOOLBAR_GROUPS } from "./inbox-constants";
 import { splitEmailBody } from "./inbox-utils";
 import { getUserDisplayName } from "@/shared/auth/auth-client";
 import type { InboxRowMeta } from "./inbox-list";
+
+function formatAttachmentSize(bytes: number): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function attachmentIcon(mimeType: string): string {
+  if (mimeType.includes("pdf")) return "ri-file-pdf-line text-danger";
+  if (mimeType.startsWith("image/")) return "ri-image-line text-info";
+  if (mimeType.includes("sheet") || mimeType.includes("excel"))
+    return "ri-file-excel-line text-success";
+  if (mimeType.includes("word")) return "ri-file-word-line text-primary";
+  return "ri-file-line";
+}
 
 function formatDetailDate(sentAt: string): string {
   const d = new Date(sentAt);
@@ -35,8 +56,14 @@ export function InboxDetailPanel({
   replyText,
   onReplyChange,
   onSendReply,
+  replyMode,
+  onReplyModeChange,
+  forwardTo,
+  onForwardToChange,
+  onDownloadAttachment,
   sending,
   sentFlash,
+  sendError,
   leads,
   companies,
   suggested,
@@ -55,8 +82,14 @@ export function InboxDetailPanel({
   replyText: string;
   onReplyChange: (v: string) => void;
   onSendReply: () => void;
+  replyMode: "reply" | "replyAll" | "forward";
+  onReplyModeChange: (mode: "reply" | "replyAll" | "forward") => void;
+  forwardTo: string;
+  onForwardToChange: (v: string) => void;
+  onDownloadAttachment: (att: CrmEmailAttachment) => void;
   sending?: boolean;
   sentFlash?: boolean;
+  sendError?: string | null;
   leads: CrmLead[];
   companies: CrmCompany[];
   suggested: CrmLead | null;
@@ -66,12 +99,9 @@ export function InboxDetailPanel({
   const company =
     meta.lead && companies.find((c) => c.id === meta.lead!.companyId);
   const userName = mailboxDisplayName?.trim() || getUserDisplayName();
-  const replyTo =
-    active.direction === "inbound" ? active.fromEmail : active.toEmail;
   const paragraphs = splitEmailBody(active.body);
-  const showAttachments =
-    meta.tag === "finance" ||
-    /coa|attach|invoice|pdf/i.test(active.subject + active.body);
+  const attachments = active.attachments ?? [];
+  const attachmentsTotal = attachments.reduce((sum, a) => sum + (a.size || 0), 0);
 
   return (
     <section className="crm-inbox-detail">
@@ -116,8 +146,22 @@ export function InboxDetailPanel({
           >
             <i className="ri-delete-bin-line"></i>
           </button>
-          <button type="button" className="crm-inbox-icon-btn" title="Reply all">
-            <i className="ri-reply-all-line"></i>
+          <button
+            type="button"
+            className="crm-inbox-icon-btn"
+            title="Reply all"
+            aria-pressed={replyMode === "replyAll"}
+            onClick={() =>
+              onReplyModeChange(replyMode === "replyAll" ? "reply" : "replyAll")
+            }
+          >
+            <i
+              className={
+                replyMode === "replyAll"
+                  ? "ri-reply-all-fill"
+                  : "ri-reply-all-line"
+              }
+            ></i>
           </button>
         </div>
       </div>
@@ -206,32 +250,33 @@ export function InboxDetailPanel({
           </p>
         </article>
 
-        {showAttachments && (
+        {attachments.length > 0 && (
           <div className="crm-inbox-attachments">
             <div className="crm-inbox-attachments-head">
               <span>
                 <i className="ri-attachment-2 me-1"></i>
-                Attachments (1.2mb)
+                Attachments{" "}
+                {attachmentsTotal > 0 &&
+                  `(${formatAttachmentSize(attachmentsTotal)})`}
               </span>
-              <button type="button" className="crm-inbox-download-all">
-                Download All
-              </button>
             </div>
             <div className="crm-inbox-attachment-grid">
-              <div className="crm-inbox-attachment-card">
-                <i className="ri-file-pdf-line text-danger"></i>
-                <div>
-                  <p>COA_Spec_Sheet.pdf</p>
-                  <span>842 KB</span>
-                </div>
-              </div>
-              <div className="crm-inbox-attachment-card">
-                <i className="ri-image-line text-info"></i>
-                <div>
-                  <p>Product_Label.jpg</p>
-                  <span>384 KB</span>
-                </div>
-              </div>
+              {attachments.map((att, i) => (
+                <button
+                  type="button"
+                  key={`${att.messageId ?? ""}-${att.attachmentId ?? i}`}
+                  className="crm-inbox-attachment-card"
+                  onClick={() => onDownloadAttachment(att)}
+                  disabled={!att.attachmentId || !att.messageId}
+                  title={`Download ${att.filename}`}
+                >
+                  <i className={attachmentIcon(att.mimeType)}></i>
+                  <div>
+                    <p>{att.filename}</p>
+                    <span>{formatAttachmentSize(att.size)}</span>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -244,12 +289,24 @@ export function InboxDetailPanel({
             Message sent successfully
           </div>
         )}
+        {sendError && (
+          <div className="crm-inbox-sent-toast !bg-danger/10 !text-danger" role="alert">
+            <i className="ri-error-warning-fill"></i>
+            {sendError}
+          </div>
+        )}
         <div className="crm-inbox-reply-card">
           <div className="crm-inbox-reply-label-row">
             <button type="button" className="crm-inbox-toolbar-btn" aria-label="Back">
               <i className="ri-arrow-left-line"></i>
             </button>
-            <span className="crm-inbox-reply-label">Reply :</span>
+            <span className="crm-inbox-reply-label">
+              {replyMode === "forward"
+                ? "Forward :"
+                : replyMode === "replyAll"
+                  ? "Reply all :"
+                  : "Reply :"}
+            </span>
           </div>
           <div className="crm-inbox-reply-toolbar">
             {REPLY_TOOLBAR_GROUPS.map((group, gi) =>
@@ -277,11 +334,26 @@ export function InboxDetailPanel({
               )
             )}
           </div>
+          {replyMode === "forward" && (
+            <input
+              type="email"
+              value={forwardTo}
+              onChange={(e) => onForwardToChange(e.target.value)}
+              disabled={!gmailConnected}
+              placeholder="Forward to (email address)"
+              className="crm-inbox-reply-input"
+              aria-label="Forward to"
+            />
+          )}
           <textarea
             value={replyText}
             onChange={(e) => onReplyChange(e.target.value)}
             disabled={!gmailConnected}
-            placeholder={`Write your reply to ${meta.from}…`}
+            placeholder={
+              replyMode === "forward"
+                ? "Add a note (optional)…"
+                : `Write your reply to ${meta.from}…`
+            }
             className="crm-inbox-reply-input"
             rows={6}
           />
@@ -298,16 +370,36 @@ export function InboxDetailPanel({
               </button>
             </div>
             <div className="crm-inbox-reply-actions-right">
-              <button type="button" className="crm-inbox-btn-forward">
-                Forward
+              <button
+                type="button"
+                className="crm-inbox-btn-forward"
+                onClick={() =>
+                  onReplyModeChange(
+                    replyMode === "forward" ? "reply" : "forward"
+                  )
+                }
+              >
+                {replyMode === "forward" ? "Cancel" : "Forward"}
               </button>
               <button
                 type="button"
                 className="crm-inbox-btn-reply"
-                disabled={!gmailConnected || !replyText.trim() || sending}
+                disabled={
+                  !gmailConnected ||
+                  sending ||
+                  (replyMode === "forward"
+                    ? !forwardTo.trim()
+                    : !replyText.trim())
+                }
                 onClick={onSendReply}
               >
-                {sending ? "Sending…" : "Reply"}
+                {sending
+                  ? "Sending…"
+                  : replyMode === "forward"
+                    ? "Forward"
+                    : replyMode === "replyAll"
+                      ? "Reply all"
+                      : "Reply"}
               </button>
             </div>
           </div>

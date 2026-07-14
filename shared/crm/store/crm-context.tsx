@@ -69,6 +69,11 @@ import {
   type OutlookAccount,
   type OutlookThreadItem,
   sendOutlookMessage,
+  replyOutlookMessage,
+  replyAllOutlookMessage,
+  forwardOutlookMessage,
+  batchModifyOutlookThreads,
+  trashOutlookThreads,
 } from "./outlook-api";
 import { getBackendContacts, saveBackendContacts } from "./contacts-api";
 import { getBackendCompanies, saveBackendCompanies } from "./companies-api";
@@ -99,6 +104,9 @@ export type SendCrmEmailInput = {
   toEmail: string;
   subject: string;
   body: string;
+  /** Outlook message id to thread against. Only synced emails have one. */
+  replyToMessageId?: string | null;
+  mode?: "reply" | "replyAll" | "forward";
 };
 
 type CrmContextValue = CrmState & {
@@ -121,7 +129,8 @@ type CrmContextValue = CrmState & {
   markLeadDormant: (leadId: string) => void;
   createDealFromLead: (leadId: string, value?: string) => string | null;
   sendLeadEmail: (input: SendLeadEmailInput) => void;
-  sendCrmEmail: (input: SendCrmEmailInput) => void;
+  /** Resolves to null on success, or an error message if the send failed. */
+  sendCrmEmail: (input: SendCrmEmailInput) => Promise<string | null>;
   linkEmailToLead: (emailId: string, leadId: string) => void;
   /** Star / read / archive / trash. Persisted, so it survives a reload. */
   setEmailFlag: (emailId: string, flag: EmailFlag, on: boolean) => void;
@@ -877,7 +886,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   );
 
   const sendCrmEmail = useCallback(
-    (input: SendCrmEmailInput) => {
+    async (input: SendCrmEmailInput): Promise<string | null> => {
       const lead =
         (input.leadId
           ? state.leads.find((l) => l.id === input.leadId)
@@ -901,13 +910,33 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         sentAt: todayIso(),
       };
 
-      if (state.gmailConnected && state.outlookAccountId) {
-        void sendOutlookMessage({
-          accountId: state.outlookAccountId,
-          to: input.toEmail,
-          subject: input.subject,
-          html: input.body.replace(/\n/g, "<br/>"),
-        });
+      // No mailbox, no send. Recording it locally anyway would leave the CRM
+      // claiming it sent an email that never left the building.
+      if (!state.gmailConnected || !state.outlookAccountId) {
+        return "Connect Outlook before sending email.";
+      }
+
+      const html = input.body.replace(/\n/g, "<br/>");
+      const messageId = input.replyToMessageId ?? null;
+      const accountId = state.outlookAccountId;
+      // With a real Outlook message id, use the threading endpoints so the
+      // mail lands in the recipient's existing conversation. Without one
+      // (locally composed mail), fall back to a plain send.
+      const sent =
+        messageId && input.mode === "forward"
+          ? await forwardOutlookMessage({ accountId, messageId, to: input.toEmail, html })
+          : messageId && input.mode === "replyAll"
+            ? await replyAllOutlookMessage({ accountId, messageId, html })
+            : messageId && input.mode === "reply"
+              ? await replyOutlookMessage({ accountId, messageId, html })
+              : await sendOutlookMessage({
+                  accountId,
+                  to: input.toEmail,
+                  subject: input.subject,
+                  html,
+                });
+      if (!sent.live) {
+        return sent.error;
       }
 
       patch((prev) => {
@@ -937,6 +966,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           }),
         };
       });
+
+      return null;
     },
     [
       patch,
@@ -992,12 +1023,53 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
   const setEmailFlag = useCallback(
     (emailId: string, flag: EmailFlag, on: boolean) => {
+      // Mirror the change into Outlook, best effort: Outlook is the source of
+      // truth, so if the call fails the next sync simply restores its state.
+      // Locally composed mail ("thread-…" ids) doesn't exist in Outlook.
+      const email = state.emails.find((e) => e.id === emailId);
+      const accountId = state.outlookAccountId;
+      if (
+        email &&
+        accountId &&
+        state.gmailConnected &&
+        !email.threadId.startsWith("thread-")
+      ) {
+        const threadIds = [email.threadId];
+        if (flag === "trashed" && on) {
+          void trashOutlookThreads({ accountId, threadIds });
+        } else if (flag === "read") {
+          void batchModifyOutlookThreads({
+            accountId,
+            threadIds,
+            ...(on
+              ? { removeLabelIds: ["UNREAD"] }
+              : { addLabelIds: ["UNREAD"] }),
+          });
+        } else if (flag === "starred") {
+          void batchModifyOutlookThreads({
+            accountId,
+            threadIds,
+            ...(on
+              ? { addLabelIds: ["STARRED"] }
+              : { removeLabelIds: ["STARRED"] }),
+          });
+        } else if (flag === "archived" && on) {
+          void batchModifyOutlookThreads({
+            accountId,
+            threadIds,
+            removeLabelIds: ["INBOX"],
+          });
+        }
+        // ponytail: un-archive / un-trash stay local-only — the backend has
+        // no restore endpoint. Add one if users ask for undo in Outlook too.
+      }
+
       patch((prev) => ({
         ...prev,
         emailMeta: upsertEmailMeta(prev.emailMeta, emailId, { [flag]: on }),
       }));
     },
-    [patch]
+    [patch, state.emails, state.gmailConnected, state.outlookAccountId]
   );
 
   const emailIdsWithFlag = useCallback(
@@ -1124,9 +1196,17 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           return Boolean(from) && from !== accountEmail;
         });
 
+        // Trust the folder queries: a thread is SENT because it has messages
+        // in Sent Items, not because any message in it is from you. Applied
+        // unconditionally, the address heuristic put every thread you ever
+        // replied to (and every mail to yourself) in Sent, turning the Sent
+        // folder into a copy of All Mails. Heuristic kept only for the
+        // fallback fetch, which has no folder labels at all.
         const mailboxLabels = new Set(item.mailboxLabels);
-        if (hasInbound) mailboxLabels.add("INBOX");
-        if (hasOutbound) mailboxLabels.add("SENT");
+        if (mailboxLabels.size === 0) {
+          if (hasInbound) mailboxLabels.add("INBOX");
+          if (hasOutbound) mailboxLabels.add("SENT");
+        }
 
         const fromRaw = latestMessage?.from ?? item.thread.from;
         const toRaw = latestMessage?.to ?? item.thread.to;
@@ -1144,6 +1224,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           body
         ).slice(0, 120);
 
+        const attachments = messages.flatMap((m) => m.attachments ?? []);
+
         syncedEmails.push({
           id: latestMessage?.id ?? `outlook-${threadId}`,
           leadId: null,
@@ -1156,6 +1238,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           fromEmail: fromEmail || accountEmail,
           toEmail,
           sentAt: latestMessage?.date ?? item.thread.date ?? todayIso(),
+          attachments,
         });
       }
 

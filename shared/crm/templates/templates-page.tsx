@@ -15,9 +15,9 @@ import {
 } from "@/shared/crm/store/email-templates";
 import { useCrm } from "@/shared/crm/store/crm-context";
 import {
-  listBackendEmailTemplates,
+  getBackendEmailTemplates,
   saveBackendEmailTemplates,
-} from "@/shared/crm/store/outlook-api";
+} from "@/shared/crm/store/templates-api";
 import { getUserDisplayName } from "@/shared/auth/auth-client";
 import { generateCrmId } from "@/shared/crm/store/workflow";
 import Seo from "@/shared/layout-components/seo/seo";
@@ -152,7 +152,7 @@ export default function TemplatesPage() {
         setSyncPhase("loading");
       }
       try {
-        const res = await listBackendEmailTemplates();
+        const res = await getBackendEmailTemplates();
         if (!active) return;
         if (res.live) {
           replaceEmailTemplates(res.data);

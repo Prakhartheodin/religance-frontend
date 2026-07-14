@@ -183,7 +183,7 @@ export default function LeadDiscoveryBoard() {
                         ? "Loading buyers from Excel…"
                         : buyersError
                           ? `Could not load buyers: ${buyersError}`
-                          : excelBuyers.length === 0
+                          : catalogueBuyers.length === 0
                             ? "No buyer data loaded. Sign in and ensure the backend can read the Excel folder."
                             : "No buyers found for this salt in the Excel master data."
                     }

@@ -1,9 +1,6 @@
 "use client";
 
 import { getToken } from "@/shared/auth/auth-client";
-import type { DiscoveryMedicine } from "./medicines-master";
-import type { SaltMasterItem } from "./salts-master";
-import type { EmailTemplate } from "./email-templates";
 
 const BACKEND_BASE =
   process.env.NEXT_PUBLIC_RELIGENCE_BACKEND_URL ?? "http://localhost:4000";
@@ -49,6 +46,13 @@ export type OutlookThread = {
     date: string | null;
     htmlBody: string | null;
     textBody: string | null;
+    attachments?: Array<{
+      filename: string;
+      mimeType: string;
+      size: number;
+      attachmentId?: string;
+      messageId?: string;
+    }>;
   }>;
 };
 
@@ -129,29 +133,6 @@ async function postJson<T>(
   }
 }
 
-async function putJson<T>(path: string, payload: unknown): Promise<JsonResult<T>> {
-  try {
-    const res = await fetchWithTimeout(`${BACKEND_BASE}${path}`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      const message =
-        (body as { error?: string }).error ?? `Request failed (${res.status})`;
-      return { live: false, error: message };
-    }
-    const data = (await res.json()) as T;
-    return { live: true, data };
-  } catch (err) {
-    return {
-      live: false,
-      error: normalizeFetchError(err),
-    };
-  }
-}
-
 export async function fetchOutlookConnectUrl(): Promise<JsonResult<{ url: string }>> {
   return getJson<{ url: string }>("/v1/email/auth/microsoft");
 }
@@ -211,14 +192,92 @@ export async function sendOutlookMessage(input: {
   );
 }
 
-export async function listBackendEmailTemplates(): Promise<JsonResult<EmailTemplate[]>> {
-  return getJson<EmailTemplate[]>("/v1/email/templates");
+export async function replyOutlookMessage(input: {
+  accountId: string;
+  messageId: string;
+  html: string;
+}): Promise<JsonResult<{ id: string | null; threadId?: string | null }>> {
+  return postJson(
+    `/v1/email/messages/${encodeURIComponent(input.messageId)}/reply`,
+    { accountId: input.accountId, html: input.html }
+  );
 }
 
-export async function saveBackendEmailTemplates(
-  templates: EmailTemplate[]
-): Promise<JsonResult<EmailTemplate[]>> {
-  return putJson<EmailTemplate[]>("/v1/email/templates", { templates });
+export async function replyAllOutlookMessage(input: {
+  accountId: string;
+  messageId: string;
+  html: string;
+}): Promise<JsonResult<{ id: string | null; threadId?: string | null }>> {
+  return postJson(
+    `/v1/email/messages/${encodeURIComponent(input.messageId)}/reply-all`,
+    { accountId: input.accountId, html: input.html }
+  );
+}
+
+export async function forwardOutlookMessage(input: {
+  accountId: string;
+  messageId: string;
+  to: string;
+  html: string;
+}): Promise<JsonResult<{ id: string | null; threadId?: string | null }>> {
+  return postJson(
+    `/v1/email/messages/${encodeURIComponent(input.messageId)}/forward`,
+    { accountId: input.accountId, to: input.to, html: input.html }
+  );
+}
+
+export async function batchModifyOutlookThreads(input: {
+  accountId: string;
+  threadIds: string[];
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+}): Promise<JsonResult<{ success: boolean; modified: number }>> {
+  return postJson("/v1/email/threads/batch-modify", input);
+}
+
+export async function trashOutlookThreads(input: {
+  accountId: string;
+  threadIds: string[];
+}): Promise<JsonResult<{ success: boolean }>> {
+  return postJson("/v1/email/threads/trash", input);
+}
+
+/**
+ * Fetches the attachment with the auth header (a plain <a href> can't send
+ * one) and hands it to the browser as a download. Returns an error message
+ * or null. No request timeout — large attachments legitimately take a while.
+ */
+export async function downloadOutlookAttachment(input: {
+  accountId: string;
+  messageId: string;
+  attachmentId: string;
+  filename: string;
+}): Promise<string | null> {
+  try {
+    const qs = new URLSearchParams({ accountId: input.accountId }).toString();
+    const res = await fetch(
+      `${BACKEND_BASE}/v1/email/messages/${encodeURIComponent(
+        input.messageId
+      )}/attachments/${encodeURIComponent(input.attachmentId)}?${qs}`,
+      { headers: authHeaders(), cache: "no-store" }
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return (
+        (body as { error?: string }).error ?? `Download failed (${res.status})`
+      );
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = input.filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : "Download failed";
+  }
 }
 
 export type BackendSaltMaster = {
