@@ -3,6 +3,7 @@
 import type { CrmEmail } from "@/shared/crm/store/types";
 import { InboxAvatar } from "./inbox-avatar";
 import type { InboxFolderName } from "./inbox-constants";
+import { InboxOverflowMenu } from "./inbox-overflow-menu";
 import {
   formatInboxTime,
   INBOX_LIST_TAG_CLASS,
@@ -34,6 +35,10 @@ export function InboxListPanel({
   onToggleCheckAll,
   allChecked,
   loading = false,
+  onBulkMarkRead,
+  onBulkArchive,
+  onBulkUnarchive,
+  onBulkDelete,
 }: {
   gmailConnected: boolean;
   onConnect: () => void;
@@ -51,7 +56,59 @@ export function InboxListPanel({
   onToggleCheck: (id: string) => void;
   onToggleCheckAll: () => void;
   allChecked: boolean;
+  onBulkMarkRead?: () => void;
+  onBulkArchive?: () => void;
+  onBulkUnarchive?: () => void;
+  onBulkDelete?: () => void;
 }) {
+  const bulkMenuItems =
+    checkedIds.length === 0
+      ? []
+      : [
+          ...(onBulkMarkRead
+            ? [
+                {
+                  id: "read",
+                  label: "Mark as read",
+                  icon: "ri-mail-open-line",
+                  onClick: onBulkMarkRead,
+                },
+              ]
+            : []),
+          ...(activeFolder === "Archive" || activeFolder === "Deleted Items"
+            ? onBulkUnarchive
+              ? [
+                  {
+                    id: "unarchive",
+                    label: "Move to Inbox",
+                    icon: "ri-inbox-unarchive-line",
+                    onClick: onBulkUnarchive,
+                  },
+                ]
+              : []
+            : onBulkArchive
+              ? [
+                  {
+                    id: "archive",
+                    label: "Archive",
+                    icon: "ri-archive-line",
+                    onClick: onBulkArchive,
+                  },
+                ]
+              : []),
+          ...(onBulkDelete
+            ? [
+                {
+                  id: "delete",
+                  label: "Delete",
+                  icon: "ri-delete-bin-line",
+                  onClick: onBulkDelete,
+                  destructive: true,
+                },
+              ]
+            : []),
+        ];
+
   return (
     <section className="crm-inbox-list-panel">
       <header className="crm-inbox-list-toolbar">
@@ -65,13 +122,21 @@ export function InboxListPanel({
           />
           <h2 className="crm-inbox-list-folder-title">{activeFolder}</h2>
         </div>
-        <button
-          type="button"
-          className="crm-inbox-icon-btn"
-          aria-label="More actions"
-        >
-          <i className="ri-more-2-fill"></i>
-        </button>
+        <InboxOverflowMenu
+          items={
+            bulkMenuItems.length > 0
+              ? bulkMenuItems
+              : [
+                  {
+                    id: "hint",
+                    label: "Select messages for bulk actions",
+                    onClick: () => {},
+                    disabled: true,
+                  },
+                ]
+          }
+          ariaLabel="List actions"
+        />
       </header>
 
       <div className="crm-inbox-search">

@@ -90,8 +90,14 @@ export type CrmEmail = {
   id: string;
   leadId: string | null;
   threadId: string;
+  /** Latest Graph message id in the thread — used for reply/forward APIs. */
+  messageId?: string | null;
   direction: "inbound" | "outbound";
   mailboxLabels?: string[];
+  /** Graph message importance — used for Important folder (distinct from starred). */
+  importance?: "low" | "normal" | "high";
+  /** Outlook category names from Graph `categories` on synced messages. */
+  outlookCategories?: string[];
   subject: string;
   body: string;
   preview: string;
@@ -124,6 +130,8 @@ export type CrmTimelineEvent = {
   title: string;
   description: string;
   type: "stage" | "email" | "note" | "call" | "verification" | "deal";
+  /** Links email timeline events to inbox threads for deep navigation. */
+  emailId?: string;
 };
 
 export type OutlookMailboxAccount = {

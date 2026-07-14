@@ -46,6 +46,10 @@ export type OutlookThread = {
     date: string | null;
     htmlBody: string | null;
     textBody: string | null;
+    importance?: string;
+    inferenceClassification?: string;
+    categories?: string[];
+    isDraft?: boolean;
     attachments?: Array<{
       filename: string;
       mimeType: string;

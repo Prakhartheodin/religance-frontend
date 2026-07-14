@@ -6,6 +6,7 @@ import type { CrmEmail, CrmEmailAttachment } from "@/shared/crm/store/types";
 import { downloadOutlookAttachment } from "@/shared/crm/store/outlook-api";
 import Seo from "@/shared/layout-components/seo/seo";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { InboxCompose } from "./inbox-compose";
 import { InboxContactsRail } from "./inbox-contacts-rail";
 import {
@@ -24,6 +25,37 @@ import {
   suggestLeadForEmail,
   type InboxTag,
 } from "./inbox-utils";
+
+function folderForEmail(
+  email: CrmEmail,
+  trashedIds: string[],
+  archivedIds: string[]
+): InboxFolderName {
+  const isTrashed =
+    trashedIds.includes(email.id) || email.mailboxLabels?.includes("TRASH");
+  const isArchived =
+    archivedIds.includes(email.id) || email.mailboxLabels?.includes("ARCHIVE");
+  if (isTrashed) return "Deleted Items";
+  if (isArchived) return "Archive";
+  if (
+    email.mailboxLabels?.includes("INBOX") ||
+    (!email.mailboxLabels?.length && email.direction === "inbound")
+  ) {
+    return "Inbox";
+  }
+  if (
+    email.mailboxLabels?.includes("SENT") ||
+    (!email.mailboxLabels?.length && email.direction === "outbound")
+  ) {
+    return "Sent Items";
+  }
+  if (email.mailboxLabels?.includes("DRAFT")) return "Drafts";
+  if (email.mailboxLabels?.includes("JUNK")) return "Junk Email";
+  if (email.mailboxLabels?.includes("CONVERSATION_HISTORY")) {
+    return "Conversation History";
+  }
+  return "Inbox";
+}
 
 export default function InboxPage() {
   const {
@@ -46,11 +78,20 @@ export default function InboxPage() {
     emailTemplates,
     buildTemplateVars,
   } = useCrm();
+  const searchParams = useSearchParams();
 
-  const sortedEmails = useMemo(
-    () => [...emails].sort((a, b) => b.sentAt.localeCompare(a.sentAt)),
-    [emails]
-  );
+  const sortedEmails = useMemo(() => {
+    const byThread = new Map<string, CrmEmail>();
+    for (const email of emails) {
+      const existing = byThread.get(email.threadId);
+      if (!existing || email.sentAt.localeCompare(existing.sentAt) > 0) {
+        byThread.set(email.threadId, email);
+      }
+    }
+    return [...byThread.values()].sort((a, b) =>
+      b.sentAt.localeCompare(a.sentAt)
+    );
+  }, [emails]);
 
   const activeOutlookAccount = useMemo(
     () =>
@@ -74,7 +115,7 @@ export default function InboxPage() {
   }, [activeOutlookAccount, outlookEmail]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeFolder, setActiveFolder] = useState<InboxFolderName>("All Mails");
+  const [activeFolder, setActiveFolder] = useState<InboxFolderName>("Inbox");
   const [activeTag, setActiveTag] = useState<InboxTag | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [replyText, setReplyText] = useState("");
@@ -105,6 +146,7 @@ export default function InboxPage() {
     null
   );
   const [authError, setAuthError] = useState<string | null>(null);
+  const [pendingEmailId, setPendingEmailId] = useState<string | null>(null);
 
   const getLead = useCallback(
     (leadId: string | null) =>
@@ -151,30 +193,66 @@ export default function InboxPage() {
     [hasMailboxLabel]
   );
 
+  const isArchivedMail = useCallback(
+    (email: CrmEmail) =>
+      archivedIds.includes(email.id) || hasMailboxLabel(email, "ARCHIVE"),
+    [archivedIds, hasMailboxLabel]
+  );
+
+  const isTrashedMail = useCallback(
+    (email: CrmEmail) =>
+      trashedIds.includes(email.id) || hasMailboxLabel(email, "TRASH"),
+    [hasMailboxLabel, trashedIds]
+  );
+
+  const isDraftMail = useCallback(
+    (email: CrmEmail) =>
+      hasMailboxLabel(email, "DRAFT") &&
+      !hasMailboxLabel(email, "INBOX") &&
+      !hasMailboxLabel(email, "SENT"),
+    [hasMailboxLabel]
+  );
+
+  const isConversationHistoryMail = useCallback(
+    (email: CrmEmail) => hasMailboxLabel(email, "CONVERSATION_HISTORY"),
+    [hasMailboxLabel]
+  );
+
   const basePool = useMemo(() => {
     return sortedEmails.filter((e) => {
-      if (activeFolder === "Trash") return trashedIds.includes(e.id);
-      if (activeFolder === "Archive") return archivedIds.includes(e.id);
-      if (trashedIds.includes(e.id) || archivedIds.includes(e.id)) return false;
+      if (activeFolder === "Deleted Items") return isTrashedMail(e);
+      if (activeFolder === "Archive") return isArchivedMail(e);
+      if (activeFolder === "Drafts") return isDraftMail(e);
+      if (activeFolder === "Conversation History") {
+        return isConversationHistoryMail(e);
+      }
+      if (
+        isTrashedMail(e) ||
+        isArchivedMail(e) ||
+        isDraftMail(e) ||
+        isConversationHistoryMail(e)
+      ) {
+        return false;
+      }
 
-      if (activeFolder === "Sent") return isSentMail(e);
-      if (activeFolder === "Starred" || activeFolder === "Important")
-        return starredIds.includes(e.id);
-      if (activeFolder === "Spam") return isSpamMail(e) || rowMeta(e).tag === "finance";
+      if (activeFolder === "Sent Items") return isSentMail(e);
+      if (activeFolder === "Junk Email") {
+        return isSpamMail(e) || rowMeta(e).tag === "finance";
+      }
       if (activeFolder === "Inbox") return isInboxMail(e);
-      if (activeFolder === "Drafts") return false;
-      return true;
+      return false;
     });
   }, [
     activeFolder,
-    archivedIds,
+    isArchivedMail,
+    isConversationHistoryMail,
+    isDraftMail,
     isInboxMail,
     isSentMail,
     isSpamMail,
+    isTrashedMail,
     rowMeta,
     sortedEmails,
-    starredIds,
-    trashedIds,
   ]);
 
   const filtered = useMemo(() => {
@@ -198,14 +276,66 @@ export default function InboxPage() {
   }, [activeTag, basePool, rowMeta, searchQuery]);
 
   useEffect(() => {
+    const emailId = searchParams.get("email");
+    if (emailId) setPendingEmailId(emailId);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!pendingEmailId || !gmailConnected) return;
+    const match =
+      sortedEmails.find((e) => e.id === pendingEmailId) ??
+      sortedEmails.find((e) => e.messageId === pendingEmailId);
+    if (!match) {
+      if (sortedEmails.length > 0) {
+        setPendingEmailId(null);
+        const params = new URLSearchParams(window.location.search);
+        params.delete("email");
+        const qs = params.toString();
+        window.history.replaceState(
+          {},
+          "",
+          `${window.location.pathname}${qs ? `?${qs}` : ""}`
+        );
+      }
+      return;
+    }
+    setActiveFolder(folderForEmail(match, trashedIds, archivedIds));
+  }, [
+    pendingEmailId,
+    gmailConnected,
+    sortedEmails,
+    trashedIds,
+    archivedIds,
+  ]);
+
+  useEffect(() => {
     if (filtered.length === 0) {
-      setSelectedId(null);
+      if (!pendingEmailId) setSelectedId(null);
+      return;
+    }
+    if (pendingEmailId) {
+      const match =
+        filtered.find((e) => e.id === pendingEmailId) ??
+        filtered.find((e) => e.messageId === pendingEmailId);
+      if (match) {
+        setSelectedId(match.id);
+        setEmailFlag(match.id, "read", true);
+        setPendingEmailId(null);
+        const params = new URLSearchParams(window.location.search);
+        params.delete("email");
+        const qs = params.toString();
+        window.history.replaceState(
+          {},
+          "",
+          `${window.location.pathname}${qs ? `?${qs}` : ""}`
+        );
+      }
       return;
     }
     if (!selectedId || !filtered.some((e) => e.id === selectedId)) {
       setSelectedId(filtered[0].id);
     }
-  }, [filtered, selectedId]);
+  }, [filtered, selectedId, pendingEmailId, setEmailFlag]);
 
   useEffect(() => {
     if (!sentFlash) return;
@@ -305,37 +435,35 @@ export default function InboxPage() {
 
   const folderCounts = useMemo(() => {
     const activePool = sortedEmails.filter(
-      (e) => !archivedIds.includes(e.id) && !trashedIds.includes(e.id)
+      (e) => !isArchivedMail(e) && !isTrashedMail(e) && !isDraftMail(e)
     );
     const inboxUnread = activePool.filter((e) => {
       const { read } = rowMeta(e);
       return !read && isInboxMail(e);
     }).length;
     return {
-      "All Mails": activePool.length,
       Inbox: inboxUnread,
-      Sent: activePool.filter((e) => isSentMail(e)).length,
-      Drafts: 0,
-      Starred: starredIds.filter(
-        (id) => !archivedIds.includes(id) && !trashedIds.includes(id)
+      "Sent Items": activePool.filter((e) => isSentMail(e)).length,
+      Drafts: sortedEmails.filter((e) => isDraftMail(e)).length,
+      "Junk Email": activePool.filter(
+        (e) => isSpamMail(e) || rowMeta(e).tag === "finance"
       ).length,
-      Important: starredIds.filter(
-        (id) => !archivedIds.includes(id) && !trashedIds.includes(id)
+      Archive: sortedEmails.filter((e) => isArchivedMail(e)).length,
+      "Deleted Items": sortedEmails.filter((e) => isTrashedMail(e)).length,
+      "Conversation History": sortedEmails.filter((e) =>
+        isConversationHistoryMail(e)
       ).length,
-      Spam: activePool.filter((e) => isSpamMail(e) || rowMeta(e).tag === "finance")
-        .length,
-      Archive: archivedIds.length,
-      Trash: trashedIds.length,
     } satisfies Partial<Record<InboxFolderName, number>>;
   }, [
-    archivedIds,
+    isArchivedMail,
+    isConversationHistoryMail,
+    isDraftMail,
     isInboxMail,
     isSentMail,
     isSpamMail,
+    isTrashedMail,
     rowMeta,
     sortedEmails,
-    starredIds,
-    trashedIds,
   ]);
 
   const buildComposeTemplateVars = useCallback(() => {
@@ -405,16 +533,68 @@ export default function InboxPage() {
     }
   };
 
+  const applyToChecked = useCallback(
+    (fn: (id: string) => void) => {
+      checkedIds.forEach(fn);
+      setCheckedIds([]);
+    },
+    [checkedIds]
+  );
+
+  const handleBulkMarkRead = useCallback(() => {
+    applyToChecked((id) => setEmailFlag(id, "read", true));
+  }, [applyToChecked, setEmailFlag]);
+
+  const handleBulkArchive = useCallback(() => {
+    applyToChecked((id) => {
+      setEmailFlag(id, "archived", true);
+      setEmailFlag(id, "trashed", false);
+    });
+    if (selectedId && checkedIds.includes(selectedId)) setSelectedId(null);
+  }, [applyToChecked, checkedIds, selectedId, setEmailFlag]);
+
+  const handleBulkUnarchive = useCallback(() => {
+    applyToChecked((id) => {
+      setEmailFlag(id, "archived", false);
+      setEmailFlag(id, "trashed", false);
+    });
+    if (activeFolder === "Archive" || activeFolder === "Deleted Items") {
+      setActiveFolder("Inbox");
+    }
+  }, [activeFolder, applyToChecked, setEmailFlag]);
+
+  const handleBulkDelete = useCallback(() => {
+    applyToChecked((id) => {
+      setEmailFlag(id, "trashed", true);
+      setEmailFlag(id, "archived", false);
+    });
+    if (selectedId && checkedIds.includes(selectedId)) setSelectedId(null);
+  }, [applyToChecked, checkedIds, selectedId, setEmailFlag]);
+
+  const handleArchiveActive = useCallback(() => {
+    if (!active) return;
+    setEmailFlag(active.id, "archived", true);
+    setEmailFlag(active.id, "trashed", false);
+    setSelectedId(null);
+  }, [active, setEmailFlag]);
+
+  const handleUnarchiveActive = useCallback(() => {
+    if (!active) return;
+    setEmailFlag(active.id, "archived", false);
+    setEmailFlag(active.id, "trashed", false);
+    setActiveFolder("Inbox");
+    setSelectedId(active.id);
+  }, [active, setEmailFlag]);
+
   const handleSendReply = async () => {
     if (!active) return;
     const isForward = replyMode === "forward";
     if (isForward ? !forwardTo.trim() : !replyText.trim()) return;
 
-    // Only synced emails carry a real Outlook message id; locally composed
-    // ones ("em-…") and synthetic ids ("outlook-…") can't use the threading
-    // endpoints, so they fall back to a plain send.
-    const threadable =
-      !active.id.startsWith("em-") && !active.id.startsWith("outlook-");
+    // Synced Outlook mail uses a stable thread id; messageId is the Graph id
+    // needed for reply/forward/attachment APIs.
+    const threadable = Boolean(active.messageId) && !active.id.startsWith("em-");
+    const replyMessageId = active.messageId ?? null;
 
     setSending(true);
     setSendError(null);
@@ -439,7 +619,7 @@ export default function InboxPage() {
           ? active.subject
           : `Fwd: ${active.subject}`,
         body,
-        replyToMessageId: threadable ? active.id : null,
+        replyToMessageId: threadable ? replyMessageId : null,
         mode: "forward",
       });
     } else {
@@ -452,7 +632,7 @@ export default function InboxPage() {
           ? active.subject
           : `Re: ${active.subject}`,
         body: replyText.trim(),
-        replyToMessageId: threadable ? active.id : null,
+        replyToMessageId: threadable ? replyMessageId : null,
         mode: replyMode,
       });
     }
@@ -496,7 +676,7 @@ export default function InboxPage() {
     }
     setComposeDraft({ to: "", subject: "", body: "" });
     setComposeOpen(false);
-    setActiveFolder("Sent");
+    setActiveFolder("Sent Items");
     setSentFlash(true);
   };
 
@@ -700,6 +880,10 @@ export default function InboxPage() {
                 onToggleCheckAll={toggleCheckAll}
                 allChecked={allChecked}
                 loading={Boolean(switchingAccountId)}
+                onBulkMarkRead={handleBulkMarkRead}
+                onBulkArchive={handleBulkArchive}
+                onBulkUnarchive={handleBulkUnarchive}
+                onBulkDelete={handleBulkDelete}
               />
 
               {switchingAccountId ? (
@@ -725,11 +909,16 @@ export default function InboxPage() {
                     )
                   }
                   onMarkUnread={() => setEmailFlag(active.id, "read", false)}
-                  onArchive={() => {
-                    setEmailFlag(active.id, "archived", true);
-                    setEmailFlag(active.id, "trashed", false);
-                    setSelectedId(null);
-                  }}
+                  onArchive={handleArchiveActive}
+                  onUnarchive={handleUnarchiveActive}
+                  isArchived={
+                    archivedIds.includes(active.id) ||
+                    Boolean(active.mailboxLabels?.includes("ARCHIVE"))
+                  }
+                  isTrashed={
+                    trashedIds.includes(active.id) ||
+                    Boolean(active.mailboxLabels?.includes("TRASH"))
+                  }
                   onDelete={() => {
                     setEmailFlag(active.id, "trashed", true);
                     setEmailFlag(active.id, "archived", false);

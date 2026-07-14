@@ -11,8 +11,8 @@ import type {
 import Link from "next/link";
 import { InboxAvatar } from "./inbox-avatar";
 import { REPLY_TOOLBAR_GROUPS } from "./inbox-constants";
-import { splitEmailBody } from "./inbox-utils";
-import { getUserDisplayName } from "@/shared/auth/auth-client";
+import { InboxOverflowMenu } from "./inbox-overflow-menu";
+import { parseEmailBody } from "./inbox-utils";
 import type { InboxRowMeta } from "./inbox-list";
 
 function formatAttachmentSize(bytes: number): string {
@@ -46,13 +46,16 @@ function formatDetailDate(sentAt: string): string {
 export function InboxDetailPanel({
   active,
   meta,
-  mailboxDisplayName,
+  mailboxDisplayName: _mailboxDisplayName,
   gmailConnected,
   starred,
   onToggleStar,
   onMarkUnread,
   onArchive,
+  onUnarchive,
   onDelete,
+  isArchived = false,
+  isTrashed = false,
   replyText,
   onReplyChange,
   onSendReply,
@@ -78,7 +81,10 @@ export function InboxDetailPanel({
   onToggleStar: () => void;
   onMarkUnread: () => void;
   onArchive: () => void;
+  onUnarchive: () => void;
   onDelete: () => void;
+  isArchived?: boolean;
+  isTrashed?: boolean;
   replyText: string;
   onReplyChange: (v: string) => void;
   onSendReply: () => void;
@@ -98,8 +104,7 @@ export function InboxDetailPanel({
 }) {
   const company =
     meta.lead && companies.find((c) => c.id === meta.lead!.companyId);
-  const userName = mailboxDisplayName?.trim() || getUserDisplayName();
-  const paragraphs = splitEmailBody(active.body);
+  const bodyParts = parseEmailBody(active.body);
   const attachments = active.attachments ?? [];
   const attachmentsTotal = attachments.reduce((sum, a) => sum + (a.size || 0), 0);
 
@@ -125,10 +130,17 @@ export function InboxDetailPanel({
           <button
             type="button"
             className="crm-inbox-icon-btn"
-            onClick={onArchive}
-            title="Archive"
+            onClick={isArchived || isTrashed ? onUnarchive : onArchive}
+            title={isArchived || isTrashed ? "Move to Inbox" : "Archive"}
+            aria-label={isArchived || isTrashed ? "Move to Inbox" : "Archive"}
           >
-            <i className="ri-archive-line"></i>
+            <i
+              className={
+                isArchived || isTrashed
+                  ? "ri-inbox-unarchive-line"
+                  : "ri-archive-line"
+              }
+            ></i>
           </button>
           <button
             type="button"
@@ -163,6 +175,41 @@ export function InboxDetailPanel({
               }
             ></i>
           </button>
+          <InboxOverflowMenu
+            items={[
+              {
+                id: "unread",
+                label: "Mark as unread",
+                icon: "ri-mail-unread-line",
+                onClick: onMarkUnread,
+              },
+              ...(isArchived || isTrashed
+                ? [
+                    {
+                      id: "unarchive",
+                      label: "Move to Inbox",
+                      icon: "ri-inbox-unarchive-line",
+                      onClick: onUnarchive,
+                    },
+                  ]
+                : [
+                    {
+                      id: "archive",
+                      label: "Archive",
+                      icon: "ri-archive-line",
+                      onClick: onArchive,
+                    },
+                  ]),
+              {
+                id: "delete",
+                label: isTrashed ? "Delete permanently" : "Move to Deleted Items",
+                icon: "ri-delete-bin-line",
+                onClick: onDelete,
+                destructive: true,
+              },
+            ]}
+            ariaLabel="Message actions"
+          />
         </div>
       </div>
 
@@ -173,23 +220,39 @@ export function InboxDetailPanel({
         </time>
       </div>
 
+      {active.outlookCategories && active.outlookCategories.length > 0 ? (
+        <div className="crm-inbox-detail-categories">
+          {active.outlookCategories.map((category) => (
+            <span key={category} className="crm-inbox-detail-category">
+              {category}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       <div className="crm-inbox-detail-scroll">
         {meta.lead && company && (
           <div className="crm-inbox-lead-context">
-            <div className="crm-inbox-lead-context-avatar">
-              {companyInitials(company.name)}
+            <div className="crm-inbox-lead-context-main">
+              <div className="crm-inbox-lead-context-avatar">
+                {companyInitials(company.name)}
+              </div>
+              <div className="crm-inbox-lead-context-body">
+                <p className="crm-inbox-lead-context-company">{company.name}</p>
+                <p className="crm-inbox-lead-context-title">{meta.lead.title}</p>
+              </div>
             </div>
-            <div className="crm-inbox-lead-context-body">
-              <p className="crm-inbox-lead-context-company">{company.name}</p>
-              <p className="crm-inbox-lead-context-title">{meta.lead.title}</p>
+            <div className="crm-inbox-lead-context-actions">
+              <LeadStageBadge stage={meta.lead.stage} compact />
+              <Link
+                href={`/active-leads?lead=${meta.lead.id}`}
+                className="crm-inbox-open-lead-btn"
+                aria-label={`Open lead: ${meta.lead.title}`}
+              >
+                Open lead
+                <i className="ri-arrow-right-up-line" aria-hidden />
+              </Link>
             </div>
-            <LeadStageBadge stage={meta.lead.stage} compact />
-            <Link
-              href={`/active-leads?lead=${meta.lead.id}`}
-              className="ti-btn ti-btn-sm ti-btn-soft-primary"
-            >
-              Open lead
-            </Link>
           </div>
         )}
 
@@ -237,17 +300,26 @@ export function InboxDetailPanel({
         )}
 
         <article className="crm-inbox-message-card">
-          <p className="crm-inbox-message-greeting">
-            Hi, {userName} Greetings 👋
-          </p>
-          {paragraphs.map((para, i) => (
-            <p key={i}>{para}</p>
-          ))}
-          <p className="crm-inbox-message-signoff mb-0">
-            Regards,
-            <br />
-            Religence Sales
-          </p>
+          {bodyParts.length === 0 ? (
+            <p className="crm-inbox-message-empty">No message content.</p>
+          ) : (
+            bodyParts.map((part, i) => (
+              <p
+                key={i}
+                className={
+                  part.type === "greeting"
+                    ? "crm-inbox-message-greeting"
+                    : part.type === "signoff"
+                      ? "crm-inbox-message-signoff"
+                      : part.type === "cta"
+                        ? "crm-inbox-message-cta"
+                        : "crm-inbox-message-paragraph"
+                }
+              >
+                {part.text}
+              </p>
+            ))
+          )}
         </article>
 
         {attachments.length > 0 && (

@@ -10,9 +10,15 @@ import {
   LEAD_STAGES,
 } from "@/shared/crm/active-leads/lead-stages";
 import { useCrm } from "@/shared/crm/store/crm-context";
-import type { CrmLead, LeadStage } from "@/shared/crm/store/types";
+import type { CrmEmail, CrmLead, CrmTimelineEvent, LeadStage } from "@/shared/crm/store/types";
+import {
+  emailPreviewSnippet,
+  formatCrmDate,
+  formatCrmDateTime,
+} from "@/shared/crm/inbox/inbox-utils";
 import LeadScoreBadge from "@/shared/crm/lead-discovery/lead-score-badge";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import SimpleBar from "simplebar-react";
 
@@ -40,17 +46,20 @@ type ActiveLeadDetailDrawerProps = {
   onSendEmail: (lead: CrmLead) => void;
 };
 
-function formatDisplayDate(iso: string) {
-  if (iso === "—") return "—";
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return iso;
+function resolveTimelineEmailId(
+  entry: CrmTimelineEvent,
+  emails: CrmEmail[]
+): string | null {
+  if (entry.emailId) {
+    const byId = emails.find((e) => e.id === entry.emailId);
+    if (byId) return byId.id;
+    const byMessageId = emails.find((e) => e.messageId === entry.emailId);
+    if (byMessageId) return byMessageId.id;
   }
+  const subject = entry.description.trim();
+  if (!subject) return null;
+  const bySubject = emails.find((e) => e.subject === subject);
+  return bySubject?.id ?? null;
 }
 
 function InfoCard({
@@ -94,6 +103,7 @@ export function ActiveLeadDetailDrawer({
     createDealFromLead,
     deals,
   } = useCrm();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [notesDraft, setNotesDraft] = useState("");
   const open = lead !== null;
@@ -130,6 +140,18 @@ export function ActiveLeadDetailDrawer({
   const saveNotes = () => {
     if (notesDraft !== lead.notes) {
       updateLead(lead.id, { notes: notesDraft });
+    }
+  };
+
+  const openEmailInInbox = (emailId: string) => {
+    router.push(`/inbox?email=${encodeURIComponent(emailId)}`);
+  };
+
+  const handleTimelineClick = (entry: CrmTimelineEvent) => {
+    if (entry.type !== "email") return;
+    const emailId = resolveTimelineEmailId(entry, emails);
+    if (emailId) {
+      openEmailInInbox(emailId);
     }
   };
 
@@ -373,13 +395,13 @@ export function ActiveLeadDetailDrawer({
                     Last activity
                   </span>
                   <span className="text-[0.875rem] font-medium">
-                    {formatDisplayDate(lead.lastActivity)}
+                    {formatCrmDate(lead.lastActivity)}
                   </span>
                 </div>
                 <div className="active-leads-info-card !mb-0">
                   <span className="text-[0.7rem] text-textmuted block">Created</span>
                   <span className="text-[0.875rem] font-medium">
-                    {formatDisplayDate(lead.createdAt)}
+                    {formatCrmDate(lead.createdAt)}
                   </span>
                 </div>
               </div>
@@ -389,8 +411,34 @@ export function ActiveLeadDetailDrawer({
           {activeTab === "timeline" && (
             <div className="py-4" role="tabpanel">
               <ul className="list-none mb-0 active-leads-timeline">
-                {timeline.map((entry) => (
-                  <li key={entry.id} className="active-leads-timeline-item">
+                {timeline.map((entry) => {
+                  const isEmailEvent = entry.type === "email";
+                  const linkedEmailId = isEmailEvent
+                    ? resolveTimelineEmailId(entry, emails)
+                    : null;
+                  const isClickable = Boolean(linkedEmailId);
+
+                  return (
+                  <li
+                    key={entry.id}
+                    className={`active-leads-timeline-item${isClickable ? " is-clickable" : ""}`}
+                    role={isClickable ? "button" : undefined}
+                    tabIndex={isClickable ? 0 : undefined}
+                    title={isClickable ? "Open in Inbox" : undefined}
+                    onClick={
+                      isClickable ? () => handleTimelineClick(entry) : undefined
+                    }
+                    onKeyDown={
+                      isClickable
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleTimelineClick(entry);
+                            }
+                          }
+                        : undefined
+                    }
+                  >
                     <span className="active-leads-timeline-icon">
                       <i
                         className={
@@ -404,15 +452,22 @@ export function ActiveLeadDetailDrawer({
                           {entry.title}
                         </span>
                         <span className="text-[0.7rem] text-textmuted shrink-0">
-                          {formatDisplayDate(entry.date)}
+                          {formatCrmDate(entry.date)}
                         </span>
                       </div>
                       <p className="text-[0.8125rem] text-textmuted mb-0">
                         {entry.description}
                       </p>
+                      {isClickable && (
+                        <span className="active-leads-timeline-link-hint">
+                          <i className="ri-inbox-line me-1"></i>
+                          View in Inbox
+                        </span>
+                      )}
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -434,7 +489,11 @@ export function ActiveLeadDetailDrawer({
                 </div>
               ) : (
                 emails.map((email) => (
-                  <div key={email.id} className="active-leads-email-card">
+                  <Link
+                    key={email.id}
+                    href={`/inbox?email=${encodeURIComponent(email.id)}`}
+                    className="active-leads-email-card block no-underline text-inherit"
+                  >
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span
                         className={`badge text-[0.65rem] ${
@@ -446,16 +505,16 @@ export function ActiveLeadDetailDrawer({
                         {email.direction === "inbound" ? "Received" : "Sent"}
                       </span>
                       <span className="text-[0.75rem] text-textmuted">
-                        {formatDisplayDate(email.sentAt)}
+                        {formatCrmDateTime(email.sentAt)}
                       </span>
                     </div>
                     <div className="font-medium text-[0.875rem] mb-1">
                       {email.subject}
                     </div>
-                    <p className="text-[0.8125rem] text-textmuted mb-0 whitespace-pre-wrap">
-                      {email.body}
+                    <p className="text-[0.8125rem] text-textmuted mb-0 line-clamp-2">
+                      {emailPreviewSnippet(email)}
                     </p>
-                  </div>
+                  </Link>
                 ))
               )}
               <Link href="/inbox" className="text-[0.75rem] text-primary">
