@@ -1,8 +1,8 @@
 # Religance CRM — New Lead Manual Add
 
 **Date:** 2026-07-15  
-**Status:** Approved — incorporates adversarial review + UI/UX review amendments (2026-07-15)  
-**Repos:** `religance` (frontend), `religence-backend` (schema follow-up in Ship 2)  
+**Status:** Approved — incorporates adversarial review, UI/UX review, and product decisions (2026-07-15)  
+**Repos:** `religance` (frontend), `religence-backend` (Mongo schema extensions in v1 same release)  
 **Related:** [`2026-07-13-crm-scalability-design.md`](./2026-07-13-crm-scalability-design.md) (Ship 2 per-item writes, `discovery-save` atomic pattern)
 
 ---
@@ -22,9 +22,24 @@ Create writes company + optional contact + lead + timeline in **one atomic `patc
 and pipeline metrics move to phase 2. Samples and Quotations sections render as **UI stubs** (no
 backend) until client documentation arrives.
 
+**v1 backend scope:** `religence-backend` `crm-entities.ts` gains `city`, `country`, `gstin`, `pan`
+on companies and `saltId`, `medicineId` on leads in the **same release** as the frontend — not deferred
+to Ship 2. Duplicate leads for the same company + medicine are **blocked** at save (not warn-and-allow).
+
 Persistence in v1 is the same interim model as the rest of the CRM: atomic client state update,
-then debounced per-entity saves. Ship 2 replaces this with `POST /v1/crm/manual-lead-create`
-(same atomic semantics as `discovery-save`, dedupe key = normalized company name).
+then debounced per-entity saves via `persist()`. Ship 2 replaces multi-PUT creates with
+`POST /v1/crm/manual-lead-create` (same atomic semantics as `discovery-save`).
+
+---
+
+## Product decisions (locked)
+
+| # | Decision | Source |
+|---|----------|--------|
+| P1 | **Company fields v1:** Add `city`, `country`, `gstin`, `pan` to backend Mongo schema in the same release as frontend | User product decision |
+| P2 | **Lead FKs v1:** Persist `saltId` and `medicineId` on leads (frontend types + backend schema) in v1 | User product decision |
+| P3 | **Duplicate leads:** **Block save** when same `(companyId, medicineId)` OR `(companyId, normalize(matchedMedicine))` already exists — do NOT warn-and-allow | User product decision |
+| P4 | **Row click primary:** Table row click navigates to `/active-leads/[id]`; drawer is read-only “Quick view” only (explicit chevron/button), except Send Email if applicable | Approved design Approach 1 |
 
 ---
 
@@ -38,16 +53,16 @@ then debounced per-entity saves. Ship 2 replaces this with `POST /v1/crm/manual-
 | D4 | **Post-create:** redirect to `/active-leads/[id]` + success toast explaining the lead will not appear in Discovery Results |
 | D5 | **Samples & Quotations:** rendered as section stubs in v1; no API, no persistence |
 | D6 | **Entry points:** Lead Discovery Results header **and** Active Leads page header both navigate to `/active-leads/new` |
-| D7 | **Pre-fill:** `?saltId=&medicineId=` query params from Discovery selection; user may change via catalogue dropdowns |
-| D8 | **Dedupe:** company by normalized name; contact by `(companyId, lower(email))`; warn (non-blocking) on duplicate lead for same `(companyId, medicineId)` |
+| D7 | **Pre-fill:** Discovery **must** pass `saltId` and `medicineId` in URL when `activeMedicine` is set; form page **must not** reference `checkedSaltIds` |
+| D8 | **Dedupe:** company by normalized name; contact by `(companyId, lower(email))`; **block save** on duplicate lead for same `(companyId, medicineId)` or `(companyId, normalize(matchedMedicine))` |
 | D9 | **Contact:** optional in v1 (same as Active Leads `NewLeadModal`) |
 | D10 | **No `discoveryCompanyId`** on manual creates in v1 — manual leads are intentionally outside the Excel buyer graph |
-| D11 | **Deprecate `NewLeadModal`:** replace with route redirect; `ActiveLeadDetailDrawer` remains as quick-preview secondary |
+| D11 | **Deprecate `NewLeadModal`:** replace with route redirect; `ActiveLeadDetailDrawer` is read-only quick-preview secondary (P4) |
 | D12 | **Save-and-email:** out of scope v1; user navigates to lead page and uses existing Send Email flow |
 | D13 | **Button when no selection:** New Lead button is always enabled; empty pre-fill when no `activeMedicine`, full catalogue pick in form |
 | D14 | **Excel buyer name collision:** warn if typed company name matches a catalogue buyer not yet in CRM; allow proceed (creates separate record without `discoveryCompanyId`) |
 | D15 | **Stage default:** `Saved`; user may change in form (includes `Verified` and all `LEAD_STAGES`) |
-| D16 | **Assignee:** `DEFAULT_ASSIGNEES` dropdown; default = current user display name |
+| D16 | **Assignee:** `DEFAULT_ASSIGNEES` dropdown; default = `CURRENT_USER` (`DEFAULT_ASSIGNEES[0]`) — same as `NewLeadModal` |
 
 ---
 
@@ -60,7 +75,7 @@ spec (F1–F3).
 | Scalability ship | How this feature aligns |
 |------------------|-------------------------|
 | **Ship 1** | Required prerequisite. Failed GET must not arm save effects; manual create must not trigger demo-data wipes. |
-| **Ship 2** | v1 uses atomic client `patch()` (one state update). Follow-up: `POST /v1/crm/manual-lead-create` with the same single-request semantics as `POST /v1/crm/discovery-save` — company, contact, lead, timeline in one backend transaction. Removes reliance on three independent debounced PUTs for a single user action. |
+| **Ship 2** | v1 uses atomic client `patch()` (one state update) + debounced PUTs. Follow-up: `POST /v1/crm/manual-lead-create` with the same single-request semantics as `POST /v1/crm/discovery-save` — company, contact, lead, timeline in one backend transaction. Removes reliance on three independent debounced PUTs for a single user action. |
 | **Ship 3** | Catalogue dropdowns read salts/medicines from shared master data (Mongo). `saltIds[]` many-to-many validation applies. |
 | **Ship 4** | Dedupe by normalized company name becomes org-wide concern once `userId` → `orgId`; v1 dedupe rules are designed to survive that migration. |
 
@@ -73,17 +88,19 @@ The 2026-07-15 adversarial review attacked the draft modal-based spec. The follo
 
 1. **Atomic create** — replaced “extend `createLeadManual`” with `createLeadWithCompany` modeled on
    `saveFromDiscovery` (single `patch()` for company + contact + lead + timeline).
-2. **Persistence honesty** — v1 interim = atomic client patch + existing debounced saves; explicit
-   Ship 2 endpoint follow-up; no claim that debounced PUT alone is safe for multi-entity creates.
-3. **Dedupe rules** — normalized company name, contact email, duplicate-lead warning (see D8).
-4. **Pre-fill validation** — salt must be in `medicine.saltIds`; when medicine changes, salt options
-   re-filter; submit blocked on invalid pair.
-5. **Explicit defaults** — auto-title, score, follow-up, dosageForm (see Section 2).
+2. **Persistence honesty** — v1 interim = atomic client patch + existing debounced `persist()` saves;
+   explicit Ship 2 endpoint follow-up; Lead Form uses local `saveError` state — **not** `syncError`.
+3. **Dedupe rules** — normalized company name, contact email, duplicate-lead **block** (see D8, P3).
+4. **Pre-fill validation** — Discovery passes `saltId` in URL; form resolves salt from URL only (not
+   `checkedSaltIds`); salt must be in `medicine.saltIds`; submit blocked on invalid pair.
+5. **Explicit defaults** — auto-title, score, follow-up date (pipeline field), dosageForm (see Section 2).
 6. **Post-create UX** — redirect + toast; Results table remains read-only Excel buyers.
 7. **Shared catalogue fields** — extract `SaltMedicineFields` component; retire free-text inputs.
 8. **Full-page over modal** — unified form page replaces modal-first create (Approach 1).
 9. **Testing gates** — functional QA gates defined in Section 4; UI/UX gates in Section 5.6.
 10. **CRM theme fidelity** — Lead Form uses Active Leads / Ynex theme tokens (`dark:` variants, `box custom-box`); no standalone white-card RPPL layout.
+11. **Backend schema v1** — `crm-entities.ts` company + lead field extensions ship with frontend (P1, P2).
+12. **Buyer fetch** — Lead Form fetches catalogue buyers for company-name collision warning (§2.8).
 
 ---
 
@@ -96,12 +113,13 @@ The 2026-07-15 adversarial review attacked the draft modal-based spec. The follo
 | Lead classification, custom metrics, RPPL pipeline analytics | Phase 2 RPPL |
 | Samples & Quotations backend | Pending client documentation; UI stubs only |
 | Synthetic `discoveryCompanyId` for manual leads | No dedupe bridge to Excel buyers in v1 |
-| Salt rename cascade to leads | Accepted denormalization debt; optional `saltId`/`medicineId` stored for future cascade |
+| Salt rename cascade to leads | Accepted denormalization debt; `saltId`/`medicineId` stored in v1 for future cascade |
 | Verification Queue enforcement on manual create | Manual leads enter at user-selected stage; queue unchanged |
-| `POST /v1/crm/manual-lead-create` backend route | Ship 2 follow-up; v1 client-only atomic patch |
+| `POST /v1/crm/manual-lead-create` backend route | Ship 2 follow-up; v1 uses client atomic patch + debounced PUTs |
 | Appearance in Lead Discovery Results table | Results are Excel catalogue buyers, not CRM leads |
 | Company master enrichment (website, certification auto-fill) | User enters manually in v1 core fields |
 | Role-based create permissions | Any authenticated user (current CRM auth model) |
+| Follow-ups **section** (scheduling UI) | Phase 2 stub only; distinct from working **follow-up date** pipeline field |
 
 ---
 
@@ -111,10 +129,11 @@ The 2026-07-15 adversarial review attacked the draft modal-based spec. The follo
 
 | Source | Action | Destination |
 |--------|--------|-------------|
-| Lead Discovery Results header | **New Lead** button in Results `box-header` (see §5.2.2); `router.push` with query params | `/active-leads/new?saltId={id}&medicineId={id}` when `activeMedicine` is set; `/active-leads/new` when not |
+| Lead Discovery Results header | **New Lead** button in Results `box-header` (see §5.2.2); `router.push` with query params | `/active-leads/new?saltId={resultsSaltId}&medicineId={activeMedicine.id}` when `activeMedicine` is set; `/active-leads/new` when not |
 | Active Leads page header | **New lead** button (existing placement) | `/active-leads/new` (no query params) |
-| Active Leads table row click | Open lead | `/active-leads/[id]` |
-| Active Leads table row | Quick preview (optional) | `ActiveLeadDetailDrawer` — secondary; “Open full page” link to `/active-leads/[id]` |
+| Active Leads table **row click** (primary) | Navigate to full lead page | `/active-leads/[id]` |
+| Active Leads table **chevron** (`ri-arrow-right-s-line`) | Open read-only quick preview | `ActiveLeadDetailDrawer` — no inline edit; **Send Email** remains available; prominent “Open full page” link to `/active-leads/[id]` |
+| `/active-leads?lead={id}` (legacy) | Deep link compat | Opens quick-view drawer on list page; “Open full page” navigates to `/active-leads/[id]` |
 
 `NewLeadModal` is deprecated: both entry points call `router.push('/active-leads/new…')` instead of
 opening the modal. The modal file may remain temporarily as a thin redirect wrapper for any stale
@@ -122,11 +141,17 @@ deep links, then deleted.
 
 ### 1.2 Pre-fill from Lead Discovery
 
-When navigating from Discovery with query params:
+**Discovery navigation contract:** When `activeMedicine` is set, `lead-discovery-board.tsx` **must**
+include `saltId` in the URL — the salt used for the Results panel buyer lookup (first salt in
+`activeMedicine.saltIds` that is also in `checkedSaltIds`, else `activeMedicine.saltIds[0]`).
+Discovery **must not** rely on the form page reading `checkedSaltIds`.
+
+**Form page resolution** (URL params only — no `checkedSaltIds`):
 
 1. Resolve `medicineId` → `DiscoveryMedicine` from CRM catalogue.
-2. Resolve `saltId` → if present and in `medicine.saltIds`, use it; else use the first checked salt
-   in `checkedSaltIds` that appears in `medicine.saltIds`; else use `medicine.saltIds[0]`.
+2. Resolve `saltId`:
+   - If `saltId` query param present **and** `medicine.saltIds.includes(saltId)` → use it.
+   - Else → use `medicine.saltIds[0]`.
 3. Pre-fill form: `matchedSalt` (name), `matchedMedicine` (name), `dosageForm` from medicine record,
    hidden `saltId`/`medicineId` fields.
 4. User may change salt or medicine via catalogue dropdowns; changing medicine re-filters salt options
@@ -146,9 +171,9 @@ one-line subtitle in `text-textmuted text-[0.8125rem]`. Footer sticky bar: **Can
 
 | Section | v1 behaviour |
 |---------|--------------|
-| **Lead Details** | Working — company fields, salt/medicine dropdowns, title (auto-suggested, editable), stage, assignee, lead score, follow-up date, notes, location |
+| **Lead Details** | Working — company fields, salt/medicine dropdowns, title (auto-suggested, editable), stage, assignee, lead score, **follow-up date** (pipeline field, persisted), notes, location |
 | **Contacts** | Working — primary contact inline (name, role, email, phone); optional; on edit, link to add more contacts is disabled with “Manage in Contacts page” helper text |
-| **Follow-ups** | Stub — section header + “Coming soon” empty state with icon; no fields persisted |
+| **Follow-ups** | **Stub section** — header + “Coming soon” empty state; no scheduling UI; **not** the same as the follow-up date field in Lead Details |
 | **Samples** | Stub — section header + “Pending client documentation” empty state |
 | **Quotations** | Stub — section header + “Pending client documentation” empty state |
 
@@ -180,9 +205,9 @@ one-line subtitle in `text-textmuted text-[0.8125rem]`. Footer sticky bar: **Can
 |-------|----------|---------|
 | Title | Yes | `{matchedMedicine} — {companyName}` (live update as names change) |
 | Stage | Yes | `Saved` |
-| Assignee | Yes | Current user |
+| Assignee | Yes | `CURRENT_USER` (`DEFAULT_ASSIGNEES[0]`) |
 | Lead score | Yes | `50` |
-| Follow-up date | Yes | Today + 7 days |
+| Follow-up date | Yes | Today + 7 days (persisted on lead; independent of Follow-ups stub section) |
 | Notes | No | Empty string |
 
 ### 1.4 Post-create flow
@@ -207,9 +232,9 @@ one-line subtitle in `text-textmuted text-[0.8125rem]`. Footer sticky bar: **Can
 | No catalogue salts/medicines | Banner: “Add salts and medicines in Settings first.” Save disabled. |
 | Invalid salt↔medicine pair | Inline field error; Save disabled. |
 | Duplicate company name found | Non-blocking info callout: “Existing company ‘{name}’ will be linked.” Show matched company summary. |
-| Duplicate lead warning | Non-blocking warning callout: “A lead for this company and medicine already exists.” Link to existing lead. Save still allowed. |
+| Duplicate lead (same company + medicine) | **Blocking** error callout: “A lead for this company and medicine already exists.” Link to existing lead. **Save disabled.** |
 | Catalogue buyer name match | Warning callout: “This name matches a Discovery buyer not yet in your CRM. Saving creates a separate record.” |
-| Save failure | Error banner from `syncError`; form retains dirty state; retry Save. |
+| Save failure (`createLeadWithCompany` / `updateLeadWithCompany` throws) | Page-level `alert alert-danger` from local `saveError` state; form retains dirty state; retry Save. **Do not** surface `syncError` on Lead Form. |
 
 ### 1.7 Accessibility
 
@@ -226,7 +251,7 @@ Baseline requirements; full checklist in Section 5.4.
 
 ### 2.1 Schema extensions
 
-#### `CrmCompany` (additive)
+#### `CrmCompany` (additive — frontend + backend v1)
 
 ```typescript
 type CrmCompany = {
@@ -240,26 +265,47 @@ type CrmCompany = {
 
 All new company fields are optional strings. Empty string and undefined are treated as absent on save.
 
-#### `CrmLead` (additive)
+**Backend (`religence-backend/src/models/crm-entities.ts`) — v1 required:**
+
+```typescript
+// companies.fields — add:
+city: { type: String, default: '' },
+country: { type: String, default: '' },
+gstin: { type: String, default: '' },
+pan: { type: String, default: '' },
+```
+
+#### `CrmLead` (additive — frontend + backend v1)
 
 ```typescript
 type CrmLead = {
   // existing fields unchanged
-  saltId?: string;      // catalogue FK; optional in v1 for backward compat
-  medicineId?: string; // catalogue FK; optional in v1 for backward compat
+  saltId?: string;      // catalogue FK; written on create/update in v1
+  medicineId?: string;  // catalogue FK; written on create/update in v1
 };
 ```
 
 `matchedSalt` and `matchedMedicine` remain the display/filter strings (denormalized names at save time).
-`saltId`/`medicineId` are written on create and update when catalogue selections are valid.
+`saltId`/`medicineId` are **always** written on create and update when catalogue selections are valid.
 
-Backend `crm-entities.ts` gains matching optional fields when Ship 2 PATCH whitelist is extended.
-No migration required — fields are additive.
+**Backend (`religence-backend/src/models/crm-entities.ts`) — v1 required:**
+
+```typescript
+// leads.fields — add:
+saltId: { type: String, default: '' },
+medicineId: { type: String, default: '' },
+```
+
+No migration required — fields are additive. Existing PUT handlers accept new keys once schema is extended.
 
 ### 2.2 Normalization helpers
 
 ```typescript
 function normalizeCompanyName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function normalizeMedicineName(name: string): string {
   return name.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
@@ -269,6 +315,21 @@ function findCompanyByNormalizedName(
 ): CrmCompany | undefined {
   const key = normalizeCompanyName(name);
   return companies.find((c) => normalizeCompanyName(c.name) === key);
+}
+
+function findDuplicateLead(
+  leads: CrmLead[],
+  companyId: string,
+  medicineId: string,
+  matchedMedicine: string
+): CrmLead | undefined {
+  const medKey = normalizeMedicineName(matchedMedicine);
+  return leads.find(
+    (l) =>
+      l.companyId === companyId &&
+      (l.medicineId === medicineId ||
+        normalizeMedicineName(l.matchedMedicine) === medKey)
+  );
 }
 ```
 
@@ -326,21 +387,23 @@ type CreateLeadWithCompanyInput = {
    - Dedupe: `contacts.find(c => c.companyId === company.id && c.email.toLowerCase() === email.toLowerCase())`.
    - If not found → create `generateCrmId("ct")`.
    - If no contact payload → `contactId = null`.
-3. **Lead:**
-   - Duplicate check: if a lead already exists with the same `companyId` and `medicineId`, the form shows a
-     warning callout (see Section 1.6) before save; create proceeds when the user clicks Save.
-   - Create lead with defaults:
-     - `title` = input or `{matchedMedicine} — {company.name}`
-     - `stage` = input or `"Saved"`
-     - `leadScore` = input or `50`
-     - `followUpDate` = input or `followUpInDays(7)`
-     - `dosageForm` = from medicine record if not overridden
-     - `location` = input or `company.location` or `"{city}, {country}"` composite
-     - `companyName`, `contactName`, `contactRole`, `contactEmail` denormalized from company/contact
-     - `sourceLinks: []`
-     - No `discoveryCompanyId`
-4. **Timeline:** append `"Lead created manually"` / `"Added via Lead Form."` / `type: "stage"`.
-5. Return IDs.
+3. **Lead duplicate check (blocking):**
+   - `findDuplicateLead(prev.leads, company.id, input.lead.medicineId, input.lead.matchedMedicine)`.
+   - If found → **throw** `DuplicateLeadError` with `existingLeadId`; form surfaces error callout and disables Save.
+   - Do **not** create a second lead.
+4. **Lead create** (when no duplicate):
+   - `title` = input or `{matchedMedicine} — {company.name}`
+   - `stage` = input or `"Saved"`
+   - `leadScore` = input or `50`
+   - `followUpDate` = input or `followUpInDays(7)`
+   - `dosageForm` = from medicine record if not overridden
+   - `location` = input or `company.location` or `"{city}, {country}"` composite
+   - `saltId`, `medicineId` from input
+   - `companyName`, `contactName`, `contactRole`, `contactEmail` denormalized from company/contact
+   - `sourceLinks: []`
+   - No `discoveryCompanyId`
+5. **Timeline:** append `"Lead created manually"` / `"Added via Lead Form."` / `type: "stage"`.
+6. Return IDs.
 
 ### 2.4 `updateLeadWithCompany`
 
@@ -350,6 +413,7 @@ type CreateLeadWithCompanyInput = {
 
 - Updates company record referenced by `lead.companyId` when company fields present.
 - Updates or creates contact when contact fields present (same dedupe rule).
+- Re-runs duplicate check if `medicineId` or `matchedMedicine` changes (exclude current `leadId`).
 - Updates lead fields; refreshes denormalized `companyName`, contact fields, `matchedSalt`/`matchedMedicine` when those sources change.
 - Updates `saltId`/`medicineId` when catalogue selection changes; validates pair.
 - Sets `lastActivity: todayIso()` on lead.
@@ -381,7 +445,7 @@ function validateSaltMedicinePair(
 | `leadScore` | `50` |
 | `followUpDate` | `followUpInDays(7)` |
 | `dosageForm` | `medicine.dosageForm` or `"API"` |
-| `assignedTo` | `getUserDisplayName()` |
+| `assignedTo` | `CURRENT_USER` (`DEFAULT_ASSIGNEES[0]` from `types.ts`) |
 | `location` | `company.location` or city/country composite or `""` |
 | `notes` | `""` |
 | `sourceLinks` | `[]` |
@@ -390,10 +454,28 @@ function validateSaltMedicinePair(
 ### 2.7 v1 persistence
 
 1. `createLeadWithCompany` / `updateLeadWithCompany` perform one atomic `patch()` on client state.
-2. Existing debounced per-entity saves (`companies`, `contacts`, `leads` — 800ms) fire as today.
-3. **Known v1 limitation:** three debounced PUTs may arrive out of order. Mitigation: single `patch()`
-   ensures local consistency; Ship 2 `POST /v1/crm/manual-lead-create` replaces with one backend
-   transaction (same shape as `discovery-save`).
+2. Existing debounced per-entity saves (`companies`, `contacts`, `leads`, `timeline` — 800ms) fire via
+   `persist()` as today.
+
+**`persist()` behaviour (documented — no `syncError` on Lead Form):**
+
+```typescript
+// crm-context.tsx — existing helper
+const persist = async (key, items, save) => {
+  const res = await save(items, baseIdsRef.current[key]);
+  if (res.live) baseIdsRef.current[key] = items.map((i) => i.id);
+};
+```
+
+- `persist()` updates `baseIdsRef` on successful PUT; failures are **not** propagated to Lead Form.
+- Lead Form surfaces errors only from thrown `createLeadWithCompany` / `updateLeadWithCompany` via local
+  `saveError` state (validation, duplicate lead, patch callback errors).
+- Debounced PUT failures after a successful local patch may leave backend briefly stale; user can retry
+  Save on edit page. Full mitigation: Ship 2 atomic POST.
+
+3. **Known v1 limitation:** up to four debounced PUTs (company, contact, lead, timeline) may arrive out
+   of order. Mitigation: single `patch()` ensures local consistency; Ship 2 `POST /v1/crm/manual-lead-create`
+   replaces with one backend transaction.
 
 **Ship 2 follow-up endpoint:**
 
@@ -402,12 +484,17 @@ POST /v1/crm/manual-lead-create
 Body: { company, contact?, lead }
 Response: { company, contact?, lead, timelineEvent }
 Dedupe: unique partial index on { scope, normalizedCompanyName } (future); contact by email;
-        409 if client-sent id collides.
+        409 if client-sent id collides; duplicate lead 409.
 ```
 
 ### 2.8 Catalogue buyer name warning
 
-On company name blur, scan `catalogueBuyers` (from master data) for `normalizeCompanyName(buyer.buyerName) === normalizeCompanyName(typedName)` where no CRM company exists with that `discoveryCompanyId`. Surface warning per Section 1.6; do not auto-link.
+On company name blur, scan fetched `catalogueBuyers` for
+`normalizeCompanyName(buyer.buyerName) === normalizeCompanyName(typedName)` where no CRM company exists
+with that buyer’s `discoveryCompanyId`. Surface warning per Section 1.6; do not auto-link.
+
+**Buyer fetch:** `LeadFormPage` (or `lead-form-utils.ts` hook) calls the same buyer-master API used by
+`lead-discovery-board.tsx` on mount. Do not assume buyers are in CRM context state.
 
 ---
 
@@ -419,12 +506,13 @@ On company name blur, scan `catalogueBuyers` (from master data) for `normalizeCo
 |------|---------|
 | `religance/app/(components)/(contentlayout)/active-leads/new/page.tsx` | Route shell → `LeadFormPage mode="create"` |
 | `religance/app/(components)/(contentlayout)/active-leads/[id]/page.tsx` | Route shell → `LeadFormPage mode="edit"` |
-| `religance/shared/crm/active-leads/lead-form-page.tsx` | Unified create/edit form page |
+| `religance/shared/crm/active-leads/lead-form-page.tsx` | Unified create/edit form page; local `saveError` + success toast state |
 | `religance/shared/crm/active-leads/lead-form-sections/lead-details-section.tsx` | Company + product + pipeline fields |
 | `religance/shared/crm/active-leads/lead-form-sections/contacts-section.tsx` | Primary contact fields |
 | `religance/shared/crm/active-leads/lead-form-sections/stub-section.tsx` | Reusable stub for Follow-ups / Samples / Quotations |
 | `religance/shared/crm/active-leads/salt-medicine-fields.tsx` | Shared catalogue dropdowns + validation display |
-| `religance/shared/crm/store/lead-form-utils.ts` | `normalizeCompanyName`, `findCompanyByNormalizedName`, `validateSaltMedicinePair`, default builders |
+| `religance/shared/crm/active-leads/lead-form-toast.tsx` | Success toast (`aria-live="polite"`) + page-level error banner component |
+| `religance/shared/crm/store/lead-form-utils.ts` | `normalizeCompanyName`, `normalizeMedicineName`, `findCompanyByNormalizedName`, `findDuplicateLead`, `validateSaltMedicinePair`, default builders, buyer fetch helper |
 
 ### 3.2 Modified files
 
@@ -432,28 +520,28 @@ On company name blur, scan `catalogueBuyers` (from master data) for `normalizeCo
 |------|--------|
 | `religance/shared/crm/store/types.ts` | Add `city`, `country`, `gstin`, `pan` on `CrmCompany`; `saltId?`, `medicineId?` on `CrmLead` |
 | `religance/shared/crm/store/crm-context.tsx` | Add `createLeadWithCompany`, `updateLeadWithCompany`; export on context type |
-| `religance/shared/crm/lead-discovery/lead-discovery-board.tsx` | New Lead button in Results `box-header`; `router.push` with query params |
-| `religance/shared/crm/active-leads/active-leads-board.tsx` | Row → `/active-leads/[id]`; New lead → `/active-leads/new`; remove `NewLeadModal` usage |
+| `religance/shared/crm/lead-discovery/lead-discovery-board.tsx` | New Lead button in Results `box-header`; `router.push` **with `saltId` + `medicineId`** |
+| `religance/shared/crm/active-leads/active-leads-board.tsx` | Row click → `router.push('/active-leads/[id]')`; chevron → drawer only; New lead → `/active-leads/new`; remove `NewLeadModal` usage; `?lead=` opens drawer |
 | `religance/shared/crm/new-lead/new-lead-modal.tsx` | Deprecate: replace body with `useEffect` redirect to `/active-leads/new` |
-| `religance/shared/crm/active-leads/active-lead-detail-drawer.tsx` | Add “Open full page” link; remain secondary quick-preview |
+| `religance/shared/crm/active-leads/active-lead-detail-drawer.tsx` | Read-only quick view; strip stage/edit controls; keep Send Email + “Open full page” link |
 | `religance/app/globals.scss` | Styles for `.lead-form-page`, section stubs, dedupe callouts |
 
-### 3.3 Backend (Ship 2 — not v1 implementation)
+### 3.3 Backend (v1 — schema; Ship 2 — atomic route)
 
-| File | Change |
-|------|--------|
-| `religence-backend/src/models/crm-entities.ts` | Optional `city`, `country`, `gstin`, `pan` on company schema; `saltId`, `medicineId` on lead |
-| `religence-backend/src/routes/crm.routes.ts` | `POST /v1/crm/manual-lead-create` |
-| `religence-backend/src/services/crm-list.service.ts` | Transactional multi-entity create |
+| File | When | Change |
+|------|------|--------|
+| `religence-backend/src/models/crm-entities.ts` | **v1** | Add `city`, `country`, `gstin`, `pan` on company schema; `saltId`, `medicineId` on lead schema |
+| `religence-backend/src/routes/crm.routes.ts` | Ship 2 | `POST /v1/crm/manual-lead-create` |
+| `religence-backend/src/services/crm-list.service.ts` | Ship 2 | Transactional multi-entity create |
 
 ### 3.4 Deprecated / secondary
 
 | Artifact | Disposition |
 |----------|-------------|
 | `NewLeadModal` | Redirect wrapper → delete after one release |
-| `ActiveLeadDetailDrawer` | Secondary quick-preview; full edit on `/active-leads/[id]` |
+| `ActiveLeadDetailDrawer` | Read-only quick-preview secondary (P4); full edit on `/active-leads/[id]` |
 | `createLeadManual` | Retained for backward compat; no new call sites — `createLeadWithCompany` supersedes |
-| `?lead={id}` query param on `/active-leads` | Retained for backward compat; prefer `/active-leads/[id]` |
+| `?lead={id}` query param on `/active-leads` | Retained — opens quick-view drawer; prefer `/active-leads/[id]` for full page |
 
 ---
 
@@ -470,6 +558,7 @@ On company name blur, scan `catalogueBuyers` (from master data) for `normalizeCo
 | Title empty | “Lead title is required.” | Yes |
 | Contact email present but malformed | “Enter a valid email address.” | Yes |
 | Contact name empty when email present | “Contact name is required when email is provided.” | Yes |
+| Duplicate lead (company + medicine) | “A lead for this company and medicine already exists.” + link | Yes |
 
 ### 4.2 Duplicate handling
 
@@ -477,7 +566,8 @@ On company name blur, scan `catalogueBuyers` (from master data) for `normalizeCo
 |----------|-----------|
 | Normalized company name matches existing CRM company | Reuse company; info callout |
 | Contact email matches existing contact on company | Reuse contact |
-| Lead exists for same `companyId` + `medicineId` | Warning callout with link; save allowed |
+| Lead exists for same `companyId` + `medicineId` | **Block save**; error callout with link to existing lead |
+| Lead exists for same `companyId` + `normalize(matchedMedicine)` (legacy rows without `medicineId`) | **Block save**; same error callout |
 | Typed name matches Excel catalogue buyer not in CRM | Warning callout; save allowed |
 
 ### 4.3 Loading and error states
@@ -486,24 +576,28 @@ On company name blur, scan `catalogueBuyers` (from master data) for `normalizeCo
 |-------|-----|
 | Save in flight | Save button disabled, spinner, `aria-busy="true"` |
 | Catalogue loading | Salt/medicine dropdowns disabled with skeleton |
-| `createLeadWithCompany` throws | Error banner; form stays dirty |
-| Debounced PUT failure | `syncError` banner (existing pattern); dirty marker on affected entities |
+| `createLeadWithCompany` / `updateLeadWithCompany` throws | `saveError` banner (`alert alert-danger`); form stays dirty |
+| Debounced PUT failure (background `persist()`) | **Not surfaced on Lead Form**; no `syncError` wiring; user may retry Save on edit |
 | 404 on `/active-leads/[id]` | Redirect to `/active-leads` with “Lead not found” toast |
 
-### 4.4 QA gates (8)
+### 4.4 QA gates — functional (Q1–Q12)
 
 | # | Gate | Pass criteria |
 |---|------|---------------|
-| Q1 | Discovery pre-fill | Select salt + medicine → New Lead → form shows correct salt, medicine, dosage form |
-| Q2 | Catalogue override | Change medicine in form → salt dropdown re-filters; invalid pairs cannot save |
-| Q3 | Atomic create | Create with new company + contact + lead → all three appear in Active Leads after refresh |
-| Q4 | Company dedupe | Create “Cipla Ltd” twice → one company, two leads (with warning on second same-medicine) |
-| Q5 | Contact dedupe | Same email on same company → one contact reused |
-| Q6 | Post-create UX | Redirect to `/active-leads/[id]`; toast mentions not in Discovery Results |
-| Q7 | Edit round-trip | Edit notes + company city on `/active-leads/[id]` → persists after reload |
-| Q8 | Entry point parity | Active Leads “New lead” and Discovery “New Lead” both land on same form page |
+| Q1 | Discovery pre-fill | Select salt + medicine → New Lead → form shows correct salt, medicine, dosage form; URL contains `saltId` |
+| Q2 | Multi-salt pre-fill | Two salts checked, select medicine spanning both → New Lead URL includes correct `saltId`; form matches without reading `checkedSaltIds` |
+| Q3 | Catalogue override | Change medicine in form → salt dropdown re-filters; invalid pairs cannot save |
+| Q4 | Atomic create | Create with new company + contact + lead → all three + timeline event appear after **full page reload** |
+| Q5 | Duplicate lead block | Second lead same company + same medicine → Save disabled; error callout links existing lead |
+| Q6 | Company dedupe | Create “Cipla Ltd” twice with **different** medicines → one company, two leads |
+| Q7 | Contact dedupe | Same email on same company → one contact reused |
+| Q8 | Post-create UX | Redirect to `/active-leads/[id]`; toast mentions not in Discovery Results |
+| Q9 | Edit round-trip | Edit notes + company city on `/active-leads/[id]` → persists after reload (Mongo has city/gstin/pan/saltId/medicineId) |
+| Q10 | Entry point parity | Active Leads “New lead” and Discovery “New Lead” both land on same form page |
+| Q11 | `?lead=` compat | `/active-leads?lead={id}` opens quick-view drawer with correct lead; “Open full page” works |
+| Q12 | saveError on failure | Force `createLeadWithCompany` throw (e.g. duplicate) → `saveError` banner; form dirty; no `syncError` on page |
 
-Functional gates above; UI/UX visual gates in Section 5.6 (Q9–Q16).
+UI/UX visual gates in Section 5.6 (Q13–Q20).
 
 ### 4.5 Phase 2 backlog
 
@@ -512,7 +606,7 @@ Functional gates above; UI/UX visual gates in Section 5.6 (Q9–Q16).
 | RPPL classification fields | Client to provide field list |
 | Multi-product interest (products array on lead) | Schema + UI table |
 | Pipeline metrics widgets | Read-only analytics section |
-| Follow-ups working section | Linked to timeline + calendar |
+| Follow-ups working section | Linked to timeline + calendar (distinct from follow-up date field) |
 | Samples backend + UI | Pending client documentation |
 | Quotations backend + UI | Pending client documentation |
 | `POST /v1/crm/manual-lead-create` | Ship 2 backend atomic create |
@@ -550,7 +644,7 @@ are testable in implementation and QA.
 | `form-control`, `form-select` | Inputs — full size on page (not `-sm`; modal `-sm` is modal-only) |
 | `ti-btn ti-btn-primary`, `ti-btn ti-btn-light` | Primary / secondary actions |
 | `active-leads-info-card`, `active-leads-info-card-icon` | Sub-group blocks inside Lead Details (company vs product vs pipeline) |
-| `alert alert-success` / `alert alert-danger` | Sync errors, save failures |
+| `alert alert-success` / `alert alert-danger` | Save errors (`saveError`), success banners |
 | `badge bg-light text-defaulttextcolor` | Phase-2 stub section markers |
 | Empty-state pattern from `EmptyPanel` in `lead-discovery-board.tsx` | Stub section bodies: `avatar avatar-lg bg-primary/10 text-primary` + muted message |
 
@@ -616,6 +710,14 @@ status line or overlap the title.
 | `576–991px` | Two-column field pairs; breadcrumb may wrap |
 | `≥992px` | Full grid; Discovery header row layout |
 
+#### 5.2.4 Active Leads table — row vs chevron
+
+| Interaction | Target | Behaviour |
+|-------------|--------|-----------|
+| Row click (any cell except stage/score badges) | `<tr>` | `router.push('/active-leads/{id}')` — primary navigation |
+| Chevron cell click | `ri-arrow-right-s-line` icon / last `<td>` | `stopPropagation`; open read-only `ActiveLeadDetailDrawer` |
+| Stage / score badges | respective `<td>` | `stopPropagation`; no navigation |
+
 ### 5.3 Component specs
 
 #### 5.3.1 Buttons
@@ -631,6 +733,7 @@ status line or overlap the title.
 | Disable reason | UI requirement |
 |----------------|----------------|
 | Validation errors | Save `disabled`; inline errors visible; **no** tooltip needed (errors explain) |
+| Duplicate lead | Save `disabled`; error callout with link to existing lead |
 | Catalogue empty | Save `disabled`; page-level `alert alert-warning` banner; banner text explains why |
 | Submit in flight | Save `disabled`; spinner icon inside button; `aria-busy="true"`; label becomes “Saving…” |
 | Pristine edit (no changes) | Save `disabled` on edit mode only; `title="No changes to save"` |
@@ -642,8 +745,9 @@ Never disable Cancel or New Lead entry buttons during loading.
 | Event | Placement |
 |-------|-----------|
 | Field-level (required, email format, salt↔medicine) | `text-[0.75rem] text-danger mt-1` directly under the field; `aria-invalid="true"` + `aria-describedby` pointing to error id |
-| Dedupe / warning callouts | `alert` or bordered callout **above** the affected section body (company name area), not in footer |
-| Sync / save failure | Top of `.lead-form-page__body` — `alert alert-danger`; form stays dirty |
+| Dedupe info / warning callouts | `alert` or bordered callout **above** the affected section body (company name area), not in footer |
+| Duplicate lead (blocking) | `alert alert-danger` above Lead Details product subsection; Save disabled |
+| Save failure (`saveError`) | Top of `.lead-form-page__body` — `alert alert-danger`; form stays dirty |
 | First invalid on submit | Focus moves to first invalid field (WCAG focus-management) |
 
 #### 5.3.3 Loading states
@@ -652,6 +756,7 @@ Never disable Cancel or New Lead entry buttons during loading.
 |-------|-----|
 | Page load (edit) | Skeleton or “Loading lead…” centered in body; footer hidden until hydrated |
 | Catalogue loading | Salt/medicine `form-select` `disabled` + `aria-busy="true"`; placeholder option “Loading…” |
+| Buyer fetch (company warning) | Non-blocking; company name field enabled; warning appears after fetch completes |
 | Save | See §5.3.1 |
 | Cancel with dirty form | `ConfirmDialog` or native `confirm()` — “Discard unsaved changes?” |
 
@@ -667,7 +772,8 @@ Never disable Cancel or New Lead entry buttons during loading.
 
 #### 5.3.5 Stub sections (Follow-ups, Samples, Quotations)
 
-Stubs must read as **planned**, not **broken**.
+Stubs must read as **planned**, not **broken**. The **Follow-ups stub** is separate from the working
+**follow-up date** field in Lead Details pipeline (§1.3).
 
 | Element | Requirement |
 |---------|-------------|
@@ -678,6 +784,15 @@ Stubs must read as **planned**, not **broken**.
 | Interactivity | **No** disabled buttons inside stubs; no `aria-disabled` on empty regions |
 | Visual weight | Stub body opacity normal; do **not** grey out the whole section card (avoids “broken” look) |
 
+#### 5.3.6 Quick-view drawer (read-only)
+
+| Element | Requirement |
+|---------|-------------|
+| Stage dropdown / edit actions | **Removed** or disabled with helper: “Edit on full page” |
+| Send Email | Retained when lead has contact email |
+| Open full page | Primary text link + `ti-btn` in footer |
+| Data display | Read-only fields; same theme tokens as current drawer |
+
 ### 5.4 Accessibility checklist
 
 | # | Requirement | Pass test |
@@ -687,7 +802,7 @@ Stubs must read as **planned**, not **broken**.
 | A3 | Every input has `<label htmlFor>` or `aria-label` | DOM inspection |
 | A4 | Error text linked via `aria-describedby` | Screen reader announces error on focus |
 | A5 | Save exposes `aria-busy` while saving | Inspect during submit |
-| A6 | Toast uses `aria-live="polite"` (existing toast pattern) | Create lead → toast announced |
+| A6 | Toast uses `aria-live="polite"` (via `lead-form-toast.tsx`) | Create lead → toast announced |
 | A7 | Page `Seo title` matches visible heading | New vs edit |
 | A8 | Stub sections: `aria-labelledby` on region pointing to section heading | No focusable controls inside stubs |
 
@@ -702,22 +817,22 @@ Apply before merge; derived from Lead Discovery / Active Leads / settings pagina
 | T3 | Discovery header | Status line never overlaps New Lead button at 320px–1920px widths |
 | T4 | Sticky footer | Last form field scrolls fully above footer on 768px-height viewport |
 | T5 | Dropdown labels | Salt/medicine options use full text in native select; no fixed-width clipping on control |
-| T6 | Callout text | Warning/info callouts wrap (`whitespace-normal`); no `overflow:hidden` on alert bodies |
+| T6 | Callout text | Warning/info/error callouts wrap (`whitespace-normal`); no `overflow:hidden` on alert bodies |
 | T7 | Section headings | `box-title` single-line truncate only when paired with `title` tooltip |
 | T8 | Pagination (if added later) | Use `.lead-discovery-panel-footer` flex-wrap pattern — count left, controls right, `flex-shrink: 0` on children |
 
-### 5.6 UI/UX QA gates
+### 5.6 UI/UX QA gates (Q13–Q20)
 
 | # | Gate | Pass criteria |
 |---|------|---------------|
-| Q9 | Dark mode parity | Lead Form readable in dark mode; borders/backgrounds match Active Leads list |
-| Q10 | Discovery header layout | New Lead visible; status line (“Live · N buyers…”) not truncated or overlapped at 375px and 1280px |
-| Q11 | Button touch targets | Save, Cancel, New Lead, Discovery New Lead all ≥ 44px tall |
-| Q12 | Disabled Save clarity | Empty catalogue → banner + disabled Save; invalid pair → inline errors + disabled Save; in-flight → spinner + “Saving…” |
-| Q13 | Stub sections | Samples/Quotations/Follow-ups show icon empty state; no dead buttons; Phase 2 badge visible |
-| Q14 | Sticky footer | Save/Cancel always visible; no field hidden under footer when scrolled to end |
-| Q15 | Breadcrumb back | “Active Leads” link returns to list; dirty guard fires |
-| Q16 | Focus order | Logical tab order through sections; first invalid field focused on failed submit |
+| Q13 | Dark mode parity | Lead Form readable in dark mode; borders/backgrounds match Active Leads list |
+| Q14 | Discovery header layout | New Lead visible; status line (“Live · N buyers…”) not truncated or overlapped at 375px and 1280px |
+| Q15 | Button touch targets | Save, Cancel, New Lead, Discovery New Lead, row chevron all ≥ 44px tall |
+| Q16 | Disabled Save clarity | Duplicate lead / empty catalogue / invalid pair → clear UI; in-flight → spinner + “Saving…” |
+| Q17 | Stub sections | Samples/Quotations/Follow-ups show icon empty state; follow-up **date** field still works in Lead Details |
+| Q18 | Sticky footer | Save/Cancel always visible; no field hidden under footer when scrolled to end |
+| Q19 | Breadcrumb back | “Active Leads” link returns to list; dirty guard fires |
+| Q20 | Focus order | Logical tab order through sections; first invalid field focused on failed submit |
 
 ### 5.7 New / modified styles (`globals.scss`)
 
@@ -729,7 +844,7 @@ Add under a `/* Lead Form page */` comment — extend existing tokens only:
 | `.lead-form-page__body` | Scrollable content |
 | `.lead-form-page__footer` | `sticky bottom-0 z-[1] border-t … bg-white dark:bg-bodybg` + flex gap |
 | `.lead-form-section` | Optional — `box custom-box mb-4` alias |
-| `.lead-form-callout` | Dedupe info/warning — bordered rounded box matching `active-leads-info-card` |
+| `.lead-form-callout` | Dedupe info/warning/error — bordered rounded box matching `active-leads-info-card` |
 | `.lead-discovery-results-status` | Status sub-line under Results title |
 | `.lead-form-stub-body` | Centers EmptyPanel content inside stub sections |
 
@@ -745,23 +860,27 @@ Do **not** add RPPL-specific color variables or new button variants.
 | Typed name matches Excel buyer not in CRM? | **Warn and allow** — separate record without `discoveryCompanyId` (D14) |
 | Is contact required? | **No** — optional like `NewLeadModal` (D9) |
 | Default stage? | **`Saved`**, user-selectable (D15) |
-| Who can assign? | **`DEFAULT_ASSIGNEES`**, default current user (D16) |
+| Who can assign? | **`DEFAULT_ASSIGNEES`**, default `CURRENT_USER` / `DEFAULT_ASSIGNEES[0]` (D16) |
 | Extend `NewLeadModal` vs new page? | **Unified full page**; modal deprecated (D1, D11) |
-| Ship on PUT architecture or gate on POST? | **Ship v1 on atomic client patch**; POST in Ship 2 (Section 2.7) |
+| Ship on PUT architecture or gate on POST? | **Ship v1 on atomic client patch** + backend schema; POST in Ship 2 (Section 2.7) |
 | What is RPPL reference scope? | **Phased** — v1 core only; phase 2 for full RPPL (D2) |
 | Synthetic `discoveryCompanyId`? | **No** in v1 (D10) |
 | Multi-contact companies? | **v1 single primary contact** on form; additional contacts via Contacts page later |
+| Backend company fields in v1? | **Yes** — P1; same release as frontend |
+| Duplicate lead behaviour? | **Block save** — P3 |
+| Row click vs drawer? | **Full page primary** — P4 |
 
 ---
 
 ## Implementation order
 
-1. Schema types + `lead-form-utils.ts`
-2. `createLeadWithCompany` / `updateLeadWithCompany` in `crm-context.tsx`
-3. `SaltMedicineFields` component
-4. `LeadFormPage` + section components
-5. Routes `new/page.tsx`, `[id]/page.tsx`
-6. Wire Discovery + Active Leads entry points
-7. Deprecate `NewLeadModal`
-8. Styles + accessibility pass (Section 5)
-9. QA gates Q1–Q16
+1. Backend schema: `crm-entities.ts` company + lead fields (P1, P2)
+2. Frontend schema types + `lead-form-utils.ts`
+3. `createLeadWithCompany` / `updateLeadWithCompany` in `crm-context.tsx`
+4. `SaltMedicineFields` + `lead-form-toast.tsx`
+5. `LeadFormPage` + section components
+6. Routes `new/page.tsx`, `[id]/page.tsx`
+7. Wire Discovery + Active Leads entry points (row/chevron split, `saltId` in URL)
+8. Read-only drawer + deprecate `NewLeadModal`
+9. Styles + accessibility pass (Section 5)
+10. QA gates Q1–Q20
