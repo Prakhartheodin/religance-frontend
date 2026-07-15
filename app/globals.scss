@@ -1335,7 +1335,7 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
   .lead-form-page__footer {
     position: sticky;
     bottom: 0;
-    z-index: 1;
+    z-index: 20;
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
@@ -1373,6 +1373,19 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .lead-form-table-wrap {
+    margin-bottom: 0.5rem;
+
+    .table {
+      margin-bottom: 0;
+    }
+
+    th,
+    td {
+      vertical-align: middle;
+    }
   }
 
   .active-leads-timeline-item {

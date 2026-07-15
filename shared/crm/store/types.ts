@@ -167,9 +167,17 @@ export type CrmState = {
   medicines: DiscoveryMedicine[];
 };
 
-export const DEFAULT_ASSIGNEES = ["Priya Sharma", "Arjun Nair"] as const;
+/** Fallback when team list API is unavailable; not sourced from CRM contacts. */
+export const FALLBACK_TEAM_ASSIGNEES = ["Priya Sharma", "Arjun Nair"] as const;
 
-export const CURRENT_USER = DEFAULT_ASSIGNEES[0];
+/** @deprecated Use getUserDisplayName() for the signed-in assignee default. */
+export const DEFAULT_ASSIGNEES = FALLBACK_TEAM_ASSIGNEES;
+
+/** @deprecated Use getUserDisplayName() instead of a hardcoded name. */
+export const CURRENT_USER = FALLBACK_TEAM_ASSIGNEES[0];
+
+/** Assigned on every new CRM lead; not user-editable in v1. */
+export const DEFAULT_LEAD_SCORE = 100;
 
 export type CreateLeadWithCompanyInput = {
   company: {

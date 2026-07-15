@@ -1,6 +1,6 @@
 "use client";
 
-import { companyInitials } from "@/shared/crm/active-leads/active-leads-utils";
+import { companyInitials, leadEditHref } from "@/shared/crm/active-leads/active-leads-utils";
 import { FollowUpDateCell } from "@/shared/crm/active-leads/follow-up-date-cell";
 import { LeadStageProgress } from "@/shared/crm/active-leads/lead-stage-progress";
 import LeadStageBadge from "@/shared/crm/active-leads/lead-stage-badge";
@@ -176,7 +176,7 @@ export function ActiveLeadDetailDrawer({
                 Quick view — edit on full page.
               </p>
               <Link
-                href={`/active-leads/${lead.id}`}
+                href={leadEditHref(lead.id)}
                 className="text-[0.75rem] text-primary inline-flex items-center gap-1 mb-2"
               >
                 <i className="ri-external-link-line"></i>
@@ -453,7 +453,7 @@ export function ActiveLeadDetailDrawer({
                 {lead.notes || "No notes yet."}
               </p>
               <Link
-                href={`/active-leads/${lead.id}`}
+                href={leadEditHref(lead.id)}
                 className="ti-btn ti-btn-light active-leads-drawer-btn"
               >
                 Edit on full page
@@ -475,7 +475,7 @@ export function ActiveLeadDetailDrawer({
             </button>
           )}
           <Link
-            href={`/active-leads/${lead.id}`}
+            href={leadEditHref(lead.id)}
             className="ti-btn ti-btn-light"
           >
             Open full page

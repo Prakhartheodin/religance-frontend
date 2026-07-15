@@ -1,6 +1,10 @@
 "use client";
 
-import { getCompaniesForMedicine, getMedicinesForCheckedSalts, type DiscoveryMedicine } from "@/shared/crm/lead-discovery/discovery-catalog";
+import {
+  getCompaniesForCheckedMedicines,
+  getMedicinesForCheckedSalts,
+  type DiscoveryMedicine,
+} from "@/shared/crm/lead-discovery/discovery-catalog";
 import { formatBuyerSubtitle } from "@/shared/crm/lead-discovery/discovery-excel";
 import { listBackendMasterData } from "@/shared/crm/store/outlook-api";
 import type { BackendBuyerMaster } from "@/shared/crm/store/outlook-api";
@@ -9,11 +13,21 @@ import { CompanyProfileDrawer } from "@/shared/crm/lead-discovery/company-profil
 import LeadScoreBadge from "@/shared/crm/lead-discovery/lead-score-badge";
 import MedicinesTablePanel from "@/shared/crm/lead-discovery/medicines-table-panel";
 import SaltsTablePanel from "@/shared/crm/lead-discovery/salts-table-panel";
-import type { DiscoveredCompany } from "@/shared/crm/lead-discovery/types";
+import {
+  EMPTY_LEAD_DISCOVERY_FILTERS,
+  type DiscoveredCompany,
+  type LeadDiscoveryFilters,
+} from "@/shared/crm/lead-discovery/types";
+import {
+  collectFilterOptions,
+  filterDiscoveredCompanies,
+  hasActiveFilters,
+} from "@/shared/crm/lead-discovery/utils";
 import { useCrm } from "@/shared/crm/store/crm-context";
+import { leadNewHref } from "@/shared/crm/active-leads/active-leads-utils";
 import { resolvePrefillSaltId } from "@/shared/crm/store/lead-form-utils";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 const PANEL_SCROLL_MAX = "calc(100vh - 11rem)";
 
@@ -38,13 +52,22 @@ function EmptyPanel({
 
 export default function LeadDiscoveryBoard() {
   const router = useRouter();
-  const { salts, medicines: allMedicines, masterDataSynced } = useCrm();
+  const {
+    salts,
+    medicines: allMedicines,
+    masterDataSynced,
+    masterDataRevision,
+    refreshMasterData,
+  } = useCrm();
   const [catalogueBuyers, setCatalogueBuyers] = useState<BackendBuyerMaster[]>([]);
   const [buyersLoading, setBuyersLoading] = useState(true);
   const [buyersError, setBuyersError] = useState<string | null>(null);
   const [checkedSaltIds, setCheckedSaltIds] = useState<string[]>([]);
   const [checkedMedicineIds, setCheckedMedicineIds] = useState<string[]>([]);
   const [activeMedicineId, setActiveMedicineId] = useState<string | null>(null);
+  const [resultFilters, setResultFilters] = useState<LeadDiscoveryFilters>(
+    EMPTY_LEAD_DISCOVERY_FILTERS
+  );
   const [profileCompany, setProfileCompany] =
     useState<DiscoveredCompany | null>(null);
 
@@ -58,14 +81,7 @@ export default function LeadDiscoveryBoard() {
     [medicines, activeMedicineId]
   );
 
-  const companies = useMemo(() => {
-    if (!activeMedicine) return [];
-    const salt = salts.find((s) => activeMedicine.saltIds.includes(s.id));
-    if (!salt) return [];
-    return getCompaniesForMedicine(activeMedicine, salt.name, catalogueBuyers);
-  }, [activeMedicine, salts, catalogueBuyers]);
-
-  useEffect(() => {
+  const loadBuyers = useCallback(async () => {
     if (!isAuthed()) {
       setCatalogueBuyers([]);
       setBuyersError("Sign in to load buyers.");
@@ -73,35 +89,78 @@ export default function LeadDiscoveryBoard() {
       return;
     }
 
-    let active = true;
     setBuyersLoading(true);
     setBuyersError(null);
-    void listBackendMasterData(true).then((res) => {
-      if (!active) return;
-      if (res.live) {
-        setCatalogueBuyers(res.data.buyers);
-        setBuyersError(null);
-      } else {
-        setCatalogueBuyers([]);
-        setBuyersError(res.error);
-      }
-      setBuyersLoading(false);
-    });
-    return () => {
-      active = false;
-    };
+    const res = await listBackendMasterData(true);
+    if (res.live) {
+      setCatalogueBuyers(res.data.buyers);
+      setBuyersError(null);
+    } else {
+      setCatalogueBuyers([]);
+      setBuyersError(res.error);
+    }
+    setBuyersLoading(false);
   }, []);
 
-  /** When salts change, select all linked medicines by default. */
   useEffect(() => {
+    if (!masterDataSynced) {
+      void refreshMasterData();
+    }
+  }, [masterDataSynced, refreshMasterData]);
+
+  useEffect(() => {
+    void loadBuyers();
+  }, [loadBuyers, masterDataRevision]);
+
+  /** Keep medicine selection in sync when salts or catalogue medicines change. */
+  useEffect(() => {
+    if (!checkedSaltIds.length) {
+      setCheckedMedicineIds([]);
+      setActiveMedicineId(null);
+      setProfileCompany(null);
+      return;
+    }
+
     const list = getMedicinesForCheckedSalts(checkedSaltIds, allMedicines);
     const allIds = list.map((m) => m.id);
-    setCheckedMedicineIds(allIds);
+    setCheckedMedicineIds((prev) => {
+      const kept = prev.filter((id) => allIds.includes(id));
+      const merged = new Set([...kept, ...allIds]);
+      return [...merged];
+    });
     setActiveMedicineId((prev) =>
       prev && allIds.includes(prev) ? prev : allIds[0] ?? null
     );
     setProfileCompany(null);
   }, [checkedSaltIds, allMedicines]);
+
+  const catalogueCompanies = useMemo(
+    () =>
+      getCompaniesForCheckedMedicines(
+        checkedSaltIds,
+        checkedMedicineIds,
+        allMedicines,
+        salts,
+        catalogueBuyers
+      ),
+    [
+      checkedSaltIds,
+      checkedMedicineIds,
+      allMedicines,
+      salts,
+      catalogueBuyers,
+    ]
+  );
+
+  const filterOptions = useMemo(
+    () => collectFilterOptions(catalogueCompanies),
+    [catalogueCompanies]
+  );
+
+  const filteredCompanies = useMemo(
+    () => filterDiscoveredCompanies(catalogueCompanies, resultFilters),
+    [catalogueCompanies, resultFilters]
+  );
 
   const handleMedicineSelectionChange = () => {
     setProfileCompany(null);
@@ -121,14 +180,21 @@ export default function LeadDiscoveryBoard() {
   }, [activeMedicine, checkedSaltIds]);
 
   const handleNewLead = () => {
-    const params = new URLSearchParams();
-    if (activeMedicine) {
-      params.set("medicineId", activeMedicine.id);
-      const saltId = resolvePrefillSaltId(activeSaltId, activeMedicine);
-      if (saltId) params.set("saltId", saltId);
+    if (!activeMedicine) {
+      router.push(leadNewHref());
+      return;
     }
-    const q = params.toString();
-    router.push(q ? `/active-leads/new?${q}` : "/active-leads/new");
+    const saltId = resolvePrefillSaltId(activeSaltId, activeMedicine);
+    router.push(
+      leadNewHref({
+        medicineId: activeMedicine.id,
+        saltId: saltId || null,
+      })
+    );
+  };
+
+  const clearResultFilters = () => {
+    setResultFilters(EMPTY_LEAD_DISCOVERY_FILTERS);
   };
 
   const resultsStatus = buyersError ? (
@@ -138,15 +204,19 @@ export default function LeadDiscoveryBoard() {
   ) : catalogueBuyers.length > 0 ? (
     <span className="text-success">
       Live · {catalogueBuyers.length} buyers from catalogue
+      {salts.length > 0 ? ` · ${salts.length} salts` : ""}
     </span>
   ) : !masterDataSynced ? (
     <span className="text-textmuted">Syncing salts & medicines…</span>
   ) : null;
 
+  const filtersActive = hasActiveFilters(resultFilters);
+  const noSaltSelected = checkedSaltIds.length === 0;
+  const noMedicineSelected = checkedMedicineIds.length === 0;
+
   return (
     <>
       <div className="lead-discovery-board grid grid-cols-12 gap-0 border border-defaultborder dark:border-defaultborder/10 rounded-md bg-white dark:bg-bodybg">
-        {/* Salts */}
         <div className="xxl:col-span-2 xl:col-span-4 col-span-12 min-w-0 border-e border-defaultborder dark:border-defaultborder/10">
           <div className="mb-0 h-full min-w-0">
             <SaltsTablePanel
@@ -156,7 +226,6 @@ export default function LeadDiscoveryBoard() {
           </div>
         </div>
 
-        {/* Medicines */}
         <div className="xxl:col-span-2 xl:col-span-4 col-span-12 min-w-0 border-e border-defaultborder dark:border-defaultborder/10">
           <div className="mb-0 h-full min-w-0">
             <MedicinesTablePanel
@@ -170,19 +239,19 @@ export default function LeadDiscoveryBoard() {
           </div>
         </div>
 
-        {/* Companies / buyers — full width below xl so table has room */}
         <div className="xxl:col-span-8 xl:col-span-12 col-span-12 min-w-0">
           <div className="box custom-box mb-0 border-0 shadow-none rounded-none h-full flex flex-col min-h-[calc(100vh-10rem)] min-w-0 xxl:rounded-se-md xl:rounded-b-md">
             <div className="box-header border-b border-defaultborder dark:border-defaultborder/10 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="box-title mb-0">
                   Results
-                  {activeMedicine && (
+                  {!noSaltSelected && !noMedicineSelected && (
                     <span className="text-textmuted dark:text-textmuted/90 font-normal text-[0.8125rem] ms-1">
-                      · {companies.length} buyers
-                      {companies.length > 0 && catalogueBuyers.length > 0
-                        ? " (catalogue)"
-                        : ""}
+                      · {filteredCompanies.length}
+                      {filtersActive && catalogueCompanies.length > 0
+                        ? ` of ${catalogueCompanies.length}`
+                        : ""}{" "}
+                      buyers
                     </span>
                   )}
                 </div>
@@ -201,27 +270,130 @@ export default function LeadDiscoveryBoard() {
                 New Lead
               </button>
             </div>
+
+            {!noSaltSelected && !noMedicineSelected && catalogueCompanies.length > 0 && (
+              <div className="border-b border-defaultborder dark:border-defaultborder/10 px-3 py-2.5">
+                <div className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-12 md:col-span-4">
+                    <label
+                      className="form-label text-[0.7rem] mb-1"
+                      htmlFor="discovery-search"
+                    >
+                      Search buyers
+                    </label>
+                    <input
+                      id="discovery-search"
+                      type="search"
+                      className="form-control form-control-sm !min-h-[2.5rem]"
+                      placeholder="Company, contact, CAS…"
+                      value={resultFilters.search}
+                      onChange={(e) =>
+                        setResultFilters((f) => ({
+                          ...f,
+                          search: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="col-span-12 sm:col-span-6 md:col-span-3">
+                    <label
+                      className="form-label text-[0.7rem] mb-1"
+                      htmlFor="discovery-type"
+                    >
+                      Company type
+                    </label>
+                    <select
+                      id="discovery-type"
+                      className="form-select form-select-sm !min-h-[2.5rem]"
+                      value={resultFilters.companyType}
+                      onChange={(e) =>
+                        setResultFilters((f) => ({
+                          ...f,
+                          companyType: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">All types</option>
+                      {filterOptions.companyTypes.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-12 sm:col-span-6 md:col-span-3">
+                    <label
+                      className="form-label text-[0.7rem] mb-1"
+                      htmlFor="discovery-location"
+                    >
+                      Location
+                    </label>
+                    <select
+                      id="discovery-location"
+                      className="form-select form-select-sm !min-h-[2.5rem]"
+                      value={resultFilters.location}
+                      onChange={(e) =>
+                        setResultFilters((f) => ({
+                          ...f,
+                          location: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">All locations</option>
+                      {filterOptions.locations.map((loc) => (
+                        <option key={loc} value={loc}>
+                          {loc}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-12 md:col-span-2 flex gap-2">
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-light ti-btn-sm !min-h-[2.5rem] w-full"
+                      disabled={!filtersActive}
+                      onClick={clearResultFilters}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="box-body p-0 flex-1 min-h-0 min-w-0">
               <div
                 className="lead-discovery-results-panel"
                 style={{ maxHeight: PANEL_SCROLL_MAX }}
               >
-                {!activeMedicine ? (
+                {noSaltSelected ? (
                   <EmptyPanel
-                    icon="ri-building-2-line"
-                    message="Select a medicine to view matching companies"
+                    icon="ri-flask-line"
+                    message="Select one or more salts on the left to filter medicines and buyers"
                   />
-                ) : companies.length === 0 ? (
+                ) : noMedicineSelected ? (
+                  <EmptyPanel
+                    icon="ri-capsule-line"
+                    message="Select one or more medicines to view matching buyers"
+                  />
+                ) : buyersLoading ? (
+                  <EmptyPanel
+                    icon="ri-loader-4-line"
+                    message="Loading buyers from catalogue…"
+                  />
+                ) : filteredCompanies.length === 0 ? (
                   <EmptyPanel
                     icon="ri-search-line"
                     message={
-                      buyersLoading
-                        ? "Loading buyers from Excel…"
-                        : buyersError
-                          ? `Could not load buyers: ${buyersError}`
-                          : catalogueBuyers.length === 0
-                            ? "No buyer data loaded. Sign in and ensure the backend can read the Excel folder."
-                            : "No buyers found for this salt in the Excel master data."
+                      buyersError
+                        ? `Could not load buyers: ${buyersError}`
+                        : catalogueBuyers.length === 0
+                          ? "No buyer data loaded. Import Excel or check backend access."
+                          : catalogueCompanies.length === 0
+                            ? "No buyers found for the selected salt(s) and medicine(s). Link medicines to salts in Settings, or import matching buyer rows."
+                            : filtersActive
+                              ? "No buyers match the current filters. Try clearing filters or broadening your search."
+                              : "No buyers found for this selection."
                     }
                   />
                 ) : (
@@ -244,7 +416,7 @@ export default function LeadDiscoveryBoard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {companies.map((company: DiscoveredCompany) => {
+                        {filteredCompanies.map((company: DiscoveredCompany) => {
                           const isSelected =
                             profileCompany?.id === company.id;
                           return (
@@ -301,6 +473,8 @@ export default function LeadDiscoveryBoard() {
       <CompanyProfileDrawer
         company={profileCompany}
         onClose={() => setProfileCompany(null)}
+        prefillMedicineId={activeMedicine?.id ?? null}
+        prefillSaltId={activeSaltId}
       />
     </>
   );

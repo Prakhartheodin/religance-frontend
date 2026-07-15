@@ -33,7 +33,43 @@ export function getMedicinesForCheckedSalts(
   return list.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Buyers come from MongoDB via /v1/master-data — no mock fallback. */
+/** Buyers for all checked medicines under the checked salts (deduped). */
+export function getCompaniesForCheckedMedicines(
+  checkedSaltIds: string[],
+  checkedMedicineIds: string[],
+  medicines: DiscoveryMedicine[],
+  salts: { id: string; name: string }[],
+  excelBuyers: BackendBuyerMaster[] = []
+): DiscoveredCompany[] {
+  if (!checkedSaltIds.length || !checkedMedicineIds.length) return [];
+
+  const selected = medicines.filter((m) => checkedMedicineIds.includes(m.id));
+  const seen = new Set<string>();
+  const rows: DiscoveredCompany[] = [];
+
+  for (const medicine of selected) {
+    const salt =
+      salts.find(
+        (s) =>
+          checkedSaltIds.includes(s.id) && medicine.saltIds.includes(s.id)
+      ) ?? salts.find((s) => medicine.saltIds.includes(s.id));
+    if (!salt) continue;
+
+    for (const company of getExcelBuyersForMedicine(
+      medicine,
+      salt.name,
+      excelBuyers
+    )) {
+      if (seen.has(company.id)) continue;
+      seen.add(company.id);
+      rows.push(company);
+    }
+  }
+
+  return rows.sort((a, b) => b.leadScore - a.leadScore);
+}
+
+/** Buyers for a single medicine (catalogue rows). */
 export function getCompaniesForMedicine(
   medicine: DiscoveryMedicine,
   saltName: string,

@@ -1,8 +1,9 @@
 "use client";
 
+import { leadEditHref, leadNewHref } from "@/shared/crm/active-leads/active-leads-utils";
 import { SaveToContactModal } from "@/shared/crm/save-to-contact/save-to-contact-modal";
 import { useCrm } from "@/shared/crm/store/crm-context";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import SimpleBar from "simplebar-react";
 import { getCompanyProfileDetail } from "./company-profile-data";
@@ -29,12 +30,18 @@ const TABS: { id: TabId; label: string }[] = [
 type CompanyProfileDrawerProps = {
   company: DiscoveredCompany | null;
   onClose: () => void;
+  /** Active Results medicine — pre-fills `/active-leads/new` when no lead exists yet */
+  prefillMedicineId?: string | null;
+  prefillSaltId?: string | null;
 };
 
 export function CompanyProfileDrawer({
   company,
   onClose,
+  prefillMedicineId = null,
+  prefillSaltId = null,
 }: CompanyProfileDrawerProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [saveOpen, setSaveOpen] = useState(false);
   const { findCompanyByDiscoveryId, leads } = useCrm();
@@ -46,6 +53,29 @@ export function CompanyProfileDrawer({
   const existingLead = company
     ? leads.find((l) => l.discoveryCompanyId === company.id)
     : undefined;
+
+  const handleLeadForm = () => {
+    onClose();
+    if (existingLead) {
+      router.push(leadEditHref(existingLead.id));
+      return;
+    }
+    const primaryContact = profile.contacts.find((c) => c.name !== "—");
+    router.push(
+      leadNewHref({
+        medicineId: prefillMedicineId,
+        saltId: prefillSaltId,
+        companyName: profile.companyName,
+        companyType: profile.companyType,
+        location: profile.location,
+        country: profile.location,
+        contactName: primaryContact?.name,
+        contactRole: primaryContact?.role,
+        contactEmail: primaryContact?.email,
+        contactPhone: primaryContact?.phone,
+      })
+    );
+  };
 
   useEffect(() => {
     if (open) {
@@ -301,28 +331,24 @@ export function CompanyProfileDrawer({
         </SimpleBar>
 
         {(existingCompany || existingLead) && (
-          <div className="px-4 py-2 border-t border-defaultborder dark:border-defaultborder/10 bg-light/40 text-[0.75rem]">
+          <div className="px-4 py-2 border-t border-defaultborder dark:border-defaultborder/10 bg-light/40 dark:bg-black/20 text-[0.75rem]">
             {existingCompany && (
               <span className="me-2">
                 <i className="ri-building-2-line text-success"></i> Saved to CRM
               </span>
             )}
             {existingLead && (
-              <Link
-                href={`/active-leads?lead=${existingLead.id}`}
-                className="text-primary"
-                onClick={onClose}
-              >
-                <i className="ri-focus-3-line"></i> View active lead
-              </Link>
+              <span className="text-textmuted">
+                <i className="ri-focus-3-line"></i> Active lead on file
+              </span>
             )}
           </div>
         )}
 
-        <div className="ti-offcanvas-footer flex gap-2">
+        <div className="ti-offcanvas-footer flex flex-wrap gap-2">
           <button
             type="button"
-            className="ti-btn ti-btn-primary flex-1"
+            className="ti-btn ti-btn-primary flex-1 min-h-[2.75rem]"
             onClick={() => setSaveOpen(true)}
           >
             <i className="ri-user-add-line me-1"></i>
@@ -330,7 +356,19 @@ export function CompanyProfileDrawer({
           </button>
           <button
             type="button"
-            className="ti-btn ti-btn-light"
+            className="ti-btn ti-btn-light min-h-[2.75rem]"
+            onClick={handleLeadForm}
+            aria-label={existingLead ? "Edit active lead on full page" : "Create lead on full page"}
+          >
+            <i
+              className={`${existingLead ? "ri-edit-line" : "ri-add-line"} me-1`}
+              aria-hidden="true"
+            ></i>
+            {existingLead ? "Edit lead" : "New lead"}
+          </button>
+          <button
+            type="button"
+            className="ti-btn ti-btn-light min-h-[2.75rem]"
             onClick={onClose}
           >
             Close

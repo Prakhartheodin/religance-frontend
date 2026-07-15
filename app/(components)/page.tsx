@@ -127,7 +127,7 @@ export default function Home() {
                         ></i>
                       </button>
                     </div>
-                    <div className="mt-2 flex items-center justify-between">
+                    <div className="mt-2 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="form-check !ps-0">
                         <input
                           className="form-check-input"
@@ -139,7 +139,7 @@ export default function Home() {
                           className="form-check-label text-[#8c9097] dark:text-white/50 font-normal"
                           htmlFor="defaultCheck1"
                         >
-                          Remember password ?
+                          Remember password
                         </label>
                       </div>
                       <Link

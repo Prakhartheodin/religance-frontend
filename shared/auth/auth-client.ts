@@ -85,6 +85,24 @@ export function getUserDisplayName(): string {
   return "Account";
 }
 
+/** Internal Religence team members eligible as lead assignees (not CRM contacts). */
+export async function fetchTeamAssignees(): Promise<string[]> {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    const res = await fetch(`${BASE}/v1/auth/team-assignees`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { assignees?: string[] };
+    return Array.isArray(data.assignees)
+      ? data.assignees.map((n) => n.trim()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 /** True if a token exists and its JWT exp is in the future. */
 export function isAuthed(): boolean {
   const token = getToken();

@@ -2,18 +2,28 @@
 
 import { DuplicateLeadDialog } from "@/shared/crm/active-leads/duplicate-lead-dialog";
 import { SaltMedicineFields } from "@/shared/crm/active-leads/salt-medicine-fields";
-import { StubSection } from "@/shared/crm/active-leads/lead-form-sections/stub-section";
+import { FollowUpsSection } from "@/shared/crm/active-leads/lead-form-sections/follow-ups-section";
+import { QuotationsSection } from "@/shared/crm/active-leads/lead-form-sections/quotations-section";
+import { SamplesSection } from "@/shared/crm/active-leads/lead-form-sections/samples-section";
+import { leadEditHref } from "@/shared/crm/active-leads/active-leads-utils";
 import { LEAD_STAGES } from "@/shared/crm/active-leads/lead-stages";
+import LeadScoreBadge from "@/shared/crm/lead-discovery/lead-score-badge";
 import { useCrm } from "@/shared/crm/store/crm-context";
 import {
   findCompanyByNormalizedName,
   findDuplicateLead,
+  resolveEffectiveLeadTitle,
+  resolveEffectiveSaltId,
   resolvePrefillSaltId,
   validateSaltMedicinePair,
 } from "@/shared/crm/store/lead-form-utils";
 import {
-  CURRENT_USER,
-  DEFAULT_ASSIGNEES,
+  fetchTeamAssignees,
+  getUserDisplayName,
+} from "@/shared/auth/auth-client";
+import {
+  DEFAULT_LEAD_SCORE,
+  FALLBACK_TEAM_ASSIGNEES,
   type CrmLead,
   type LeadStage,
 } from "@/shared/crm/store/types";
@@ -21,7 +31,7 @@ import { followUpInDays } from "@/shared/crm/store/workflow";
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useState } from "react";
 
 type LeadFormPageProps = {
@@ -45,9 +55,9 @@ function LeadFormLoading() {
 
 export default function LeadFormPage({ mode }: LeadFormPageProps) {
   const router = useRouter();
-  const params = useParams();
   const searchParams = useSearchParams();
-  const leadId = typeof params.id === "string" ? params.id : "";
+  const leadId =
+    mode === "edit" ? (searchParams.get("id") ?? "").trim() : "";
 
   const {
     leads,
@@ -56,6 +66,8 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     salts,
     medicines,
     hydrated,
+    crmSynced,
+    masterDataSynced,
     createLeadWithCompany,
     updateLeadWithCompany,
     getCompany,
@@ -79,15 +91,17 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
 
   const [contactName, setContactName] = useState("");
   const [contactRole, setContactRole] = useState("");
+  const [contactDepartment, setContactDepartment] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [contactNotes, setContactNotes] = useState("");
 
   const [saltId, setSaltId] = useState("");
   const [medicineId, setMedicineId] = useState("");
   const [title, setTitle] = useState("");
   const [stage, setStage] = useState<LeadStage>("Saved");
-  const [assignedTo, setAssignedTo] = useState<string>(CURRENT_USER);
-  const [leadScore, setLeadScore] = useState(50);
+  const [assignedTo, setAssignedTo] = useState<string>(() => getUserDisplayName());
+  const [teamAssignees, setTeamAssignees] = useState<string[]>([]);
   const [followUpDate, setFollowUpDate] = useState(followUpInDays(7));
   const [notes, setNotes] = useState("");
 
@@ -100,6 +114,10 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
   const [hydratedForm, setHydratedForm] = useState(mode === "create");
   const [duplicateLead, setDuplicateLead] = useState<CrmLead | null>(null);
   const [titleTouched, setTitleTouched] = useState(false);
+  const [pendingNavigateLeadId, setPendingNavigateLeadId] = useState<string | null>(
+    null
+  );
+  const [submitHint, setSubmitHint] = useState<string | null>(null);
 
   const selectedMedicine = useMemo(
     () => medicines.find((m) => m.id === medicineId),
@@ -110,9 +128,39 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     [salts, saltId]
   );
 
+  const assigneeOptions = useMemo(() => {
+    const base =
+      teamAssignees.length > 0 ? teamAssignees : [...FALLBACK_TEAM_ASSIGNEES];
+    const names = new Set<string>([...base, getUserDisplayName(), assignedTo]);
+    return [...names].filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }, [teamAssignees, assignedTo]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTeamAssignees().then((names) => {
+      if (!cancelled) setTeamAssignees(names);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const markDirty = () => {
     if (!dirty) setDirty(true);
+    setSubmitHint(null);
   };
+
+  const clearFieldError = (key: string) => {
+    setErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    if (key === "saltMedicine") setSaltMedicineError(null);
+  };
+
+  const readyToSave = hydrated && masterDataSynced && crmSynced;
 
   useEffect(() => {
     if (mode !== "create" || hydratedForm) return;
@@ -121,6 +169,25 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     const med = medicines.find((m) => m.id === medId);
     setMedicineId(medId);
     setSaltId(resolvePrefillSaltId(saltParam, med));
+
+    const cn = searchParams.get("companyName");
+    if (cn) setCompanyName(cn);
+    const ctype = searchParams.get("companyType");
+    if (ctype) setCompanyType(ctype);
+    const loc = searchParams.get("location");
+    if (loc) setLocation(loc);
+    const countryParam = searchParams.get("country");
+    if (countryParam) setCountry(countryParam);
+
+    const cName = searchParams.get("contactName");
+    if (cName) setContactName(cName);
+    const cRole = searchParams.get("contactRole");
+    if (cRole) setContactRole(cRole);
+    const cEmail = searchParams.get("contactEmail");
+    if (cEmail) setContactEmail(cEmail);
+    const cPhone = searchParams.get("contactPhone");
+    if (cPhone) setContactPhone(cPhone);
+
     setHydratedForm(true);
   }, [mode, searchParams, medicines, hydratedForm]);
 
@@ -140,7 +207,9 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     setCertification(company?.certification ?? "");
 
     setContactName(contact?.name ?? lead.contactName);
-    setContactRole(contact?.role ?? lead.contactRole);
+    const roleParts = (contact?.role ?? lead.contactRole).split(" · ");
+    setContactRole(roleParts[0] ?? "");
+    setContactDepartment(roleParts[1] ?? "");
     setContactEmail(contact?.email ?? lead.contactEmail);
     setContactPhone(contact?.phone ?? "");
 
@@ -149,7 +218,6 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     setTitle(lead.title);
     setStage(lead.stage);
     setAssignedTo(lead.assignedTo);
-    setLeadScore(lead.leadScore);
     setFollowUpDate(lead.followUpDate);
     setNotes(lead.notes);
     setTitleTouched(true);
@@ -158,9 +226,18 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
   }, [mode, lead, getCompany, getContact, hydratedForm]);
 
   useEffect(() => {
-    if (mode !== "edit" || !hydrated) return;
-    if (!lead) router.replace("/active-leads");
-  }, [mode, hydrated, lead, router]);
+    if (!pendingNavigateLeadId) return;
+    if (!leads.some((l) => l.id === pendingNavigateLeadId)) return;
+    router.replace(leadEditHref(pendingNavigateLeadId));
+    setPendingNavigateLeadId(null);
+  }, [pendingNavigateLeadId, leads, router]);
+
+  useEffect(() => {
+    if (titleTouched || !companyName.trim() || !selectedMedicine) return;
+    const autoTitle = `${selectedMedicine.name} — ${companyName.trim()}`;
+    setTitle(autoTitle);
+    clearFieldError("title");
+  }, [companyName, selectedMedicine, titleTouched]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -170,11 +247,6 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
-
-  useEffect(() => {
-    if (titleTouched || !companyName.trim() || !selectedMedicine) return;
-    setTitle(`${selectedMedicine.name} — ${companyName.trim()}`);
-  }, [companyName, selectedMedicine, titleTouched]);
 
   useEffect(() => {
     if (!successToast) return;
@@ -197,15 +269,30 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     markDirty();
   };
 
+  const scrollToField = (fieldId: string) => {
+    document.getElementById(fieldId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  };
+
   const validate = (): boolean => {
+    const effectiveSaltId = resolveEffectiveSaltId(saltId, medicineId, medicines);
+    const effectiveTitle = resolveEffectiveLeadTitle(
+      title,
+      titleTouched,
+      companyName,
+      selectedMedicine
+    );
+
     const next: FieldErrors = {};
     if (!companyName.trim()) next.companyName = "Company name is required.";
-    if (!title.trim()) next.title = "Lead title is required.";
+    if (!effectiveTitle) next.title = "Lead title is required.";
     if (contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
       next.contactEmail = "Enter a valid email address.";
     }
     const pairErr = validateSaltMedicinePair(
-      saltId,
+      effectiveSaltId,
       medicineId,
       salts,
       medicines
@@ -213,10 +300,45 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     setSaltMedicineError(pairErr);
     if (pairErr) next.saltMedicine = pairErr;
     setErrors(next);
-    return Object.keys(next).length === 0;
+    const valid = Object.keys(next).length === 0;
+    if (!valid) {
+      const firstKey = Object.keys(next)[0];
+      const fieldId =
+        firstKey === "companyName"
+          ? "company-name"
+          : firstKey === "title"
+            ? "lead-title"
+            : firstKey === "saltMedicine"
+              ? "lead-medicine"
+              : firstKey === "contactEmail"
+                ? "contact-email"
+                : undefined;
+      if (fieldId) scrollToField(fieldId);
+      setSubmitHint(
+        next.saltMedicine ??
+          next.companyName ??
+          next.title ??
+          next.contactEmail ??
+          "Fix the highlighted fields above."
+      );
+    } else {
+      setSubmitHint(null);
+    }
+    return valid;
   };
 
-  const buildInput = () => ({
+  const buildInput = () => {
+    const effectiveSaltId = resolveEffectiveSaltId(saltId, medicineId, medicines);
+    const effectiveTitle = resolveEffectiveLeadTitle(
+      title,
+      titleTouched,
+      companyName,
+      selectedMedicine
+    );
+    const effectiveSalt =
+      salts.find((s) => s.id === effectiveSaltId) ?? selectedSalt;
+
+    return {
     company: {
       name: companyName.trim(),
       companyType: companyType.trim(),
@@ -232,26 +354,28 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
       contactName.trim() || contactEmail.trim()
         ? {
             name: contactName.trim(),
-            role: contactRole.trim(),
+            role: [contactRole.trim(), contactDepartment.trim()]
+              .filter(Boolean)
+              .join(" · "),
             email: contactEmail.trim(),
             phone: contactPhone.trim() || undefined,
           }
         : null,
     lead: {
-      saltId,
+      saltId: effectiveSaltId,
       medicineId,
-      matchedSalt: selectedSalt?.name ?? "",
+      matchedSalt: effectiveSalt?.name ?? selectedSalt?.name ?? "",
       matchedMedicine: selectedMedicine?.name ?? "",
       dosageForm: selectedMedicine?.dosageForm ?? "API",
-      title: title.trim(),
+      title: effectiveTitle,
       stage,
       assignedTo,
-      leadScore,
       followUpDate,
       notes: notes.trim(),
       location: location.trim(),
     },
-  });
+  };
+  };
 
   const resolveCompanyId = () => {
     if (mode === "edit" && lead) return lead.companyId;
@@ -285,6 +409,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
   const performSave = async () => {
     setSaving(true);
     setSaveError(null);
+    setSubmitHint(null);
     try {
       const input = buildInput();
       if (mode === "create") {
@@ -293,7 +418,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
         setSuccessToast(
           "Lead created. It won't appear in Discovery Results until saved from there."
         );
-        router.replace(`/active-leads/${result.leadId}`);
+        setPendingNavigateLeadId(result.leadId);
       } else if (lead) {
         updateLeadWithCompany(lead.id, input);
         setDirty(false);
@@ -308,8 +433,28 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
   };
 
   const handleSubmit = () => {
+    if (!readyToSave) {
+      setSubmitHint("Still syncing your CRM data — try again in a moment.");
+      return;
+    }
+    if (catalogueEmpty) {
+      setSubmitHint(
+        "Add salts and medicines in Settings before creating a lead."
+      );
+      return;
+    }
     if (!validate()) return;
     if (mode === "edit" && !dirty) return;
+
+    const effectiveSaltId = resolveEffectiveSaltId(saltId, medicineId, medicines);
+    const effectiveTitle = resolveEffectiveLeadTitle(
+      title,
+      titleTouched,
+      companyName,
+      selectedMedicine
+    );
+    if (effectiveSaltId !== saltId) setSaltId(effectiveSaltId);
+    if (effectiveTitle && effectiveTitle !== title) setTitle(effectiveTitle);
 
     const dup = checkDuplicate(mode === "edit" ? lead?.id : undefined);
     if (dup) {
@@ -329,7 +474,20 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
   }
 
   if (mode === "edit" && hydrated && !lead) {
-    return null;
+    return (
+      <Fragment>
+        <Seo title="Lead not found" />
+        <div className="max-w-5xl mx-auto py-8">
+          <div className="alert alert-warning text-[0.8125rem] mb-3" role="alert">
+            This lead could not be found. It may have been deleted or is still
+            syncing.
+          </div>
+          <Link href="/active-leads" className="ti-btn ti-btn-primary">
+            Back to Active Leads
+          </Link>
+        </div>
+      </Fragment>
+    );
   }
 
   if (!hydratedForm) {
@@ -350,11 +508,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
       <div className="lead-form-page flex flex-col min-h-0">
         <Pageheader
           currentpage={pageTitle}
-          activepage={
-            <Link href="/active-leads" className="hover:text-primary">
-              Active Leads
-            </Link>
-          }
+          activepage="Active Leads"
           mainpage={pageTitle}
         />
 
@@ -379,6 +533,12 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
             <div className="alert alert-warning text-[0.8125rem] mb-3" role="alert">
               Salts and medicines catalogue is empty. Add catalogue items in Settings
               before creating a lead.
+            </div>
+          )}
+
+          {!readyToSave && (
+            <div className="alert alert-info text-[0.8125rem] mb-3" role="status">
+              Loading CRM data… save will be available in a moment.
             </div>
           )}
 
@@ -425,6 +585,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         aria-invalid={Boolean(errors.companyName)}
                         onChange={(e) => {
                           setCompanyName(e.target.value);
+                          clearFieldError("companyName");
                           markDirty();
                         }}
                       />
@@ -525,10 +686,12 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                     disabled={catalogueEmpty}
                     onSaltChange={(id) => {
                       setSaltId(id);
+                      clearFieldError("saltMedicine");
                       markDirty();
                     }}
                     onMedicineChange={(id) => {
                       setMedicineId(id);
+                      clearFieldError("saltMedicine");
                       markDirty();
                     }}
                   />
@@ -542,12 +705,14 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                     <div className="col-span-12">
                       <label className="form-label text-[0.75rem]">Lead title</label>
                       <input
+                        id="lead-title"
                         className="form-control"
                         value={title}
                         aria-invalid={Boolean(errors.title)}
                         onChange={(e) => {
                           setTitle(e.target.value);
                           setTitleTouched(true);
+                          clearFieldError("title");
                           markDirty();
                         }}
                       />
@@ -584,12 +749,15 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                           markDirty();
                         }}
                       >
-                        {DEFAULT_ASSIGNEES.map((a) => (
+                        {assigneeOptions.map((a) => (
                           <option key={a} value={a}>
                             {a}
                           </option>
                         ))}
                       </select>
+                      <p className="text-[0.75rem] text-textmuted mb-0 mt-1">
+                        Your organization&apos;s sales team — not customer contacts.
+                      </p>
                     </div>
                     <div className="col-span-12 md:col-span-6">
                       <label className="form-label text-[0.75rem]">Follow-up date</label>
@@ -605,17 +773,15 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                     </div>
                     <div className="col-span-12 md:col-span-6">
                       <label className="form-label text-[0.75rem]">Lead score</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        className="form-control"
-                        value={leadScore}
-                        onChange={(e) => {
-                          setLeadScore(Number(e.target.value));
-                          markDirty();
-                        }}
-                      />
+                      <div className="py-2">
+                        <LeadScoreBadge
+                          score={
+                            mode === "create"
+                              ? DEFAULT_LEAD_SCORE
+                              : (lead?.leadScore ?? DEFAULT_LEAD_SCORE)
+                          }
+                        />
+                      </div>
                     </div>
                     <div className="col-span-12">
                       <label className="form-label text-[0.75rem]">Notes</label>
@@ -636,10 +802,10 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
 
             <div className="box custom-box mb-4">
               <div className="box-header border-b border-defaultborder dark:border-defaultborder/10">
-                <h6 className="box-title mb-0 before:!hidden">Contact (optional)</h6>
+                <h6 className="box-title mb-0 before:!hidden">Add contact (optional)</h6>
               </div>
               <div className="box-body grid grid-cols-12 gap-3">
-                <div className="col-span-12 md:col-span-6">
+                <div className="col-span-12 md:col-span-4">
                   <label className="form-label text-[0.75rem]">Name</label>
                   <input
                     className="form-control"
@@ -650,8 +816,8 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                     }}
                   />
                 </div>
-                <div className="col-span-12 md:col-span-6">
-                  <label className="form-label text-[0.75rem]">Role</label>
+                <div className="col-span-12 md:col-span-4">
+                  <label className="form-label text-[0.75rem]">Designation</label>
                   <input
                     className="form-control"
                     value={contactRole}
@@ -661,26 +827,20 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                     }}
                   />
                 </div>
-                <div className="col-span-12 md:col-span-6">
-                  <label className="form-label text-[0.75rem]">Email</label>
+                <div className="col-span-12 md:col-span-4">
+                  <label className="form-label text-[0.75rem]">Department</label>
                   <input
-                    type="email"
                     className="form-control"
-                    value={contactEmail}
-                    aria-invalid={Boolean(errors.contactEmail)}
+                    placeholder="Purchase / QA / R&D / Management"
+                    value={contactDepartment}
                     onChange={(e) => {
-                      setContactEmail(e.target.value);
+                      setContactDepartment(e.target.value);
                       markDirty();
                     }}
                   />
-                  {errors.contactEmail && (
-                    <p className="text-[0.75rem] text-danger mt-1 mb-0">
-                      {errors.contactEmail}
-                    </p>
-                  )}
                 </div>
                 <div className="col-span-12 md:col-span-6">
-                  <label className="form-label text-[0.75rem]">Phone</label>
+                  <label className="form-label text-[0.75rem]">Phone / WhatsApp</label>
                   <input
                     className="form-control"
                     value={contactPhone}
@@ -690,25 +850,58 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                     }}
                   />
                 </div>
+                <div className="col-span-12 md:col-span-6">
+                  <label className="form-label text-[0.75rem]">Email</label>
+                  <input
+                    id="contact-email"
+                    type="email"
+                    className="form-control"
+                    value={contactEmail}
+                    aria-invalid={Boolean(errors.contactEmail)}
+                    onChange={(e) => {
+                      setContactEmail(e.target.value);
+                      clearFieldError("contactEmail");
+                      markDirty();
+                    }}
+                  />
+                  {errors.contactEmail && (
+                    <p className="text-[0.75rem] text-danger mt-1 mb-0">
+                      {errors.contactEmail}
+                    </p>
+                  )}
+                </div>
+                <div className="col-span-12">
+                  <label className="form-label text-[0.75rem]">Contact notes</label>
+                  <input
+                    className="form-control"
+                    value={contactNotes}
+                    onChange={(e) => {
+                      setContactNotes(e.target.value);
+                      markDirty();
+                    }}
+                  />
+                  <p className="text-[0.75rem] text-textmuted mb-0 mt-1">
+                    UI preview — not saved with the lead yet.
+                  </p>
+                </div>
               </div>
             </div>
 
-            <StubSection
-              title="Follow-ups"
-              message="Follow-up scheduling and reminders will be available in a future release."
-            />
-            <StubSection
-              title="Samples"
-              message="Sample request tracking will be available in a future release."
-            />
-            <StubSection
-              title="Quotations"
-              message="Quotation management will be available in a future release."
-            />
+            <FollowUpsSection />
+            <SamplesSection />
+            <QuotationsSection />
           </div>
         </div>
 
-        <div className="lead-form-page__footer sticky bottom-0 z-[1] border-t border-defaultborder dark:border-defaultborder/10 bg-white dark:bg-bodybg px-4 py-3 flex flex-col sm:flex-row gap-2 sm:justify-end">
+        <div className="lead-form-page__footer sticky bottom-0 z-20 border-t border-defaultborder dark:border-defaultborder/10 bg-white dark:bg-bodybg px-4 py-3 flex flex-col sm:flex-row gap-2 sm:justify-end sm:items-center">
+          {submitHint && (
+            <p
+              className="text-[0.75rem] text-danger mb-0 sm:me-auto order-first sm:order-none w-full sm:w-auto"
+              role="alert"
+            >
+              {submitHint}
+            </p>
+          )}
           <Link
             href="/active-leads"
             className="ti-btn ti-btn-light !min-h-[2.75rem] order-2 sm:order-1"
@@ -718,9 +911,20 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
           <button
             type="button"
             className="ti-btn ti-btn-primary !min-h-[2.75rem] order-1 sm:order-2"
-            disabled={saving || catalogueEmpty || (mode === "edit" && !dirty)}
+            disabled={
+              saving ||
+              !readyToSave ||
+              catalogueEmpty ||
+              (mode === "edit" && !dirty)
+            }
             aria-busy={saving}
-            title={mode === "edit" && !dirty ? "No changes to save" : undefined}
+            title={
+              !readyToSave
+                ? "CRM data is still loading"
+                : mode === "edit" && !dirty
+                  ? "No changes to save"
+                  : undefined
+            }
             onClick={handleSubmit}
           >
             {saving ? (
@@ -743,7 +947,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
         companyName={companyName.trim()}
         matchedMedicine={selectedMedicine?.name ?? ""}
         onEditExisting={() => {
-          if (duplicateLead) router.push(`/active-leads/${duplicateLead.id}`);
+          if (duplicateLead) router.push(leadEditHref(duplicateLead.id));
           setDuplicateLead(null);
         }}
         onCreateDuplicate={() => void performSave()}

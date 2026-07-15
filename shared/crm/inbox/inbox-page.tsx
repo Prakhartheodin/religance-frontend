@@ -82,6 +82,7 @@ export default function InboxPage() {
     loadMoreInboxEmails,
     outlookInboxSyncing,
     outlookInboxLastSyncedAt,
+    outlookSyncError,
   } = useCrm();
   const searchParams = useSearchParams();
 
@@ -354,28 +355,10 @@ export default function InboxPage() {
     setForwardTo("");
   }, [selectedId]);
 
-  useEffect(() => {
-    let active = true;
-    const bootstrapInbox = async () => {
-      try {
-        await syncOutlookInbox();
-      } catch (err) {
-        if (active) {
-          setAuthError(
-            err instanceof Error
-              ? err.message
-              : "Could not sync Outlook inbox right now."
-          );
-        }
-      } finally {
-        if (active) setCheckingConnection(false);
-      }
-    };
-    void bootstrapInbox();
-    return () => {
-      active = false;
-    };
-  }, [syncOutlookInbox]);
+  // Auto-sync on login is owned by the CRM context effect (fires on
+  // hydrated && authUserId). A second sync here just raced it — two concurrent
+  // 8-folder fans throttled Graph, so the login sync often landed empty and the
+  // user had to hit refresh. One trigger = one clean sync.
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -929,11 +912,15 @@ export default function InboxPage() {
                 onToggleCheck={toggleCheck}
                 onToggleCheckAll={toggleCheckAll}
                 allChecked={allChecked}
-                loading={Boolean(switchingAccountId)}
+                loading={
+                  Boolean(switchingAccountId) ||
+                  (outlookInboxSyncing && basePool.length === 0)
+                }
                 hasMore={showLoadMore}
                 loadingMore={loadingMoreInboxFolder === activeFolder}
                 onLoadMore={handleLoadMore}
                 syncing={outlookInboxSyncing}
+                syncError={outlookSyncError}
                 lastSyncedAt={outlookInboxLastSyncedAt}
                 onRefresh={handleRefreshInbox}
                 onBulkMarkRead={handleBulkMarkRead}

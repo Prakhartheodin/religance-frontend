@@ -50,6 +50,7 @@ export function InboxListPanel({
   loadingMore = false,
   onLoadMore,
   syncing = false,
+  syncError = null,
   lastSyncedAt = null,
   onRefresh,
   onBulkMarkRead,
@@ -77,6 +78,7 @@ export function InboxListPanel({
   loadingMore?: boolean;
   onLoadMore?: () => void;
   syncing?: boolean;
+  syncError?: string | null;
   lastSyncedAt?: string | null;
   onRefresh?: () => void;
   onBulkMarkRead?: () => void;
@@ -212,6 +214,17 @@ export function InboxListPanel({
           />
         ) : loading ? (
           <InboxListSkeleton />
+        ) : syncError && emails.length === 0 ? (
+          <InboxEmptyState
+            icon="ri-mail-close-line"
+            title="Couldn't load your inbox"
+            description={syncError}
+            action={
+              <button type="button" className="crm-inbox-connect-btn" onClick={onConnect}>
+                Reconnect Outlook
+              </button>
+            }
+          />
         ) : emails.length === 0 ? (
           <InboxEmptyState
             icon="ri-inbox-archive-line"

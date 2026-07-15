@@ -58,3 +58,28 @@ export function resolvePrefillSaltId(
   if (saltIdParam && medicine.saltIds.includes(saltIdParam)) return saltIdParam;
   return medicine.saltIds[0] ?? "";
 }
+
+/** Default salt when medicine is chosen but salt state lags (e.g. before effects run). */
+export function resolveEffectiveSaltId(
+  saltId: string,
+  medicineId: string,
+  medicines: DiscoveryMedicine[]
+): string {
+  if (saltId.trim()) return saltId;
+  if (!medicineId) return "";
+  const medicine = medicines.find((m) => m.id === medicineId);
+  return medicine?.saltIds[0] ?? "";
+}
+
+/** Default title from company + medicine when user has not typed a custom title. */
+export function resolveEffectiveLeadTitle(
+  title: string,
+  titleTouched: boolean,
+  companyName: string,
+  medicine: DiscoveryMedicine | undefined
+): string {
+  const trimmed = title.trim();
+  if (trimmed) return trimmed;
+  if (titleTouched || !companyName.trim() || !medicine) return "";
+  return `${medicine.name} — ${companyName.trim()}`;
+}

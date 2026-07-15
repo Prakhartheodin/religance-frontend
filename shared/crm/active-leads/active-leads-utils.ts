@@ -1,6 +1,41 @@
 import type { CrmLead } from "@/shared/crm/store/types";
 import { isTerminalStage } from "./lead-stages";
 
+/** Static-export-safe edit URL — lead IDs are runtime-generated, not path segments. */
+export function leadEditHref(leadId: string): string {
+  return `/active-leads/edit/?id=${encodeURIComponent(leadId)}`;
+}
+
+export type LeadNewPrefill = {
+  medicineId?: string | null;
+  saltId?: string | null;
+  companyName?: string;
+  companyType?: string;
+  location?: string;
+  country?: string;
+  contactName?: string;
+  contactRole?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+};
+
+/** Create-mode URL with optional discovery / catalogue pre-fill. */
+export function leadNewHref(prefill: LeadNewPrefill = {}): string {
+  const params = new URLSearchParams();
+  if (prefill.medicineId) params.set("medicineId", prefill.medicineId);
+  if (prefill.saltId) params.set("saltId", prefill.saltId);
+  if (prefill.companyName) params.set("companyName", prefill.companyName);
+  if (prefill.companyType) params.set("companyType", prefill.companyType);
+  if (prefill.location) params.set("location", prefill.location);
+  if (prefill.country) params.set("country", prefill.country);
+  if (prefill.contactName) params.set("contactName", prefill.contactName);
+  if (prefill.contactRole) params.set("contactRole", prefill.contactRole);
+  if (prefill.contactEmail) params.set("contactEmail", prefill.contactEmail);
+  if (prefill.contactPhone) params.set("contactPhone", prefill.contactPhone);
+  const q = params.toString();
+  return q ? `/active-leads/new/?${q}` : "/active-leads/new/";
+}
+
 export function companyInitials(name: string): string {
   const parts = name
     .replace(/\b(Pvt|Ltd|LLC|Inc)\b/gi, "")

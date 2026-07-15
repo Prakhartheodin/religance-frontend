@@ -1,4 +1,5 @@
 export type LeadDiscoveryFilters = {
+  search: string;
   salt: string;
   medicine: string;
   category: string;
@@ -9,6 +10,7 @@ export type LeadDiscoveryFilters = {
 };
 
 export const EMPTY_LEAD_DISCOVERY_FILTERS: LeadDiscoveryFilters = {
+  search: "",
   salt: "",
   medicine: "",
   category: "",

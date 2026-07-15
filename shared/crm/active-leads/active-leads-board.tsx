@@ -6,6 +6,8 @@ import {
   countLeadsByStage,
   filterLeadsForBoard,
   hasActiveLeadFilters,
+  leadEditHref,
+  leadNewHref,
 } from "@/shared/crm/active-leads/active-leads-utils";
 import { FollowUpDateCell } from "@/shared/crm/active-leads/follow-up-date-cell";
 import LeadStageBadge from "@/shared/crm/active-leads/lead-stage-badge";
@@ -196,7 +198,7 @@ export default function ActiveLeadsBoard() {
   const openLeadDrawer = (lead: CrmLead) => setSelectedLead(lead);
 
   const openLeadForm = (lead: CrmLead) => {
-    router.push(`/active-leads/${lead.id}`);
+    router.push(leadEditHref(lead.id));
   };
 
   if (!hydrated) {
@@ -222,7 +224,7 @@ export default function ActiveLeadsBoard() {
         <button
           type="button"
           className="ti-btn ti-btn-primary shrink-0 inline-flex items-center justify-center gap-1 whitespace-nowrap !w-auto !h-auto !py-2 !px-3 !text-[0.8125rem]"
-          onClick={() => router.push("/active-leads/new")}
+          onClick={() => router.push(leadNewHref())}
         >
           <i className="ri-add-line me-1"></i>
           New lead

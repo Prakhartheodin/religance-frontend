@@ -2,7 +2,8 @@
 /**@type {import('next').NextConfig} */
 const isProd = process.env.NODE_ENV === "production";
 const nextConfig = {
-  output: "export",
+  // Static export for production only — dev allows dynamic legacy /active-leads/[id]/ redirects.
+  output: isProd ? "export" : undefined,
   // Pin the workspace root to this project — a stray package-lock.json in the
   // home dir was making the bundler watch/resolve across all of C:\Users\INTEL.
   turbopack: { root: __dirname },

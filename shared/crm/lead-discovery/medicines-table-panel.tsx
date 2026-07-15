@@ -60,7 +60,7 @@ export default function MedicinesTablePanel({
         m.dosageForm.toLowerCase().includes(q)
       );
     });
-  }, [allMedicines, search]);
+  }, [allMedicines, search, saltNameById]);
 
   const totalPages = Math.max(
     1,
@@ -90,18 +90,27 @@ export default function MedicinesTablePanel({
 
   const colSpan = showSaltColumn ? 3 : 2;
 
-  const toggleMedicine = (medicine: DiscoveryMedicine) => {
-    const checked = checkedMedicineIds.includes(medicine.id);
+  const toggleMedicine = (medicine: DiscoveryMedicine, checked: boolean) => {
     const next = checked
-      ? checkedMedicineIds.filter((id) => id !== medicine.id)
-      : [...checkedMedicineIds, medicine.id];
+      ? [...checkedMedicineIds, medicine.id]
+      : checkedMedicineIds.filter((id) => id !== medicine.id);
     onCheckedChange(next);
     onSelectionChange?.();
 
-    if (!checked) {
+    if (checked) {
       onActiveMedicineChange(medicine);
     } else if (activeMedicineId === medicine.id) {
-      onActiveMedicineChange(null);
+      const fallback =
+        allMedicines.find((m) => next.includes(m.id)) ?? null;
+      onActiveMedicineChange(fallback);
+    }
+  };
+
+  const focusMedicine = (medicine: DiscoveryMedicine) => {
+    onActiveMedicineChange(medicine);
+    if (!checkedMedicineIds.includes(medicine.id)) {
+      onCheckedChange([...checkedMedicineIds, medicine.id]);
+      onSelectionChange?.();
     }
   };
 
@@ -198,7 +207,7 @@ export default function MedicinesTablePanel({
                     <tr
                       key={medicine.id}
                       className={`cursor-pointer ${checked || isActive ? "table-active" : ""}`}
-                      onClick={() => toggleMedicine(medicine)}
+                      onClick={() => focusMedicine(medicine)}
                     >
                       <td
                         className="!px-1 !py-1.5"
@@ -208,7 +217,7 @@ export default function MedicinesTablePanel({
                           type="checkbox"
                           className="form-check-input"
                           checked={checked}
-                          onChange={() => toggleMedicine(medicine)}
+                          onChange={() => toggleMedicine(medicine, !checked)}
                           aria-label={`Select ${medicine.name}`}
                         />
                       </td>

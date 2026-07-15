@@ -51,7 +51,7 @@ import type {
   LeadStage,
   SaveToContactOption,
 } from "./types";
-import { CURRENT_USER } from "./types";
+import { DEFAULT_LEAD_SCORE } from "./types";
 import { findCompanyByNormalizedName } from "./lead-form-utils";
 import {
   buildLeadTitle,
@@ -141,8 +141,11 @@ const OUTLOOK_FOLDER_SOURCES = [
 type CrmContextValue = CrmState & {
   hydrated: boolean;
   masterDataSynced: boolean;
+  masterDataRevision: number;
+  crmSynced: boolean;
   outlookInboxSyncing: boolean;
   outlookInboxLastSyncedAt: string | null;
+  outlookSyncError: string | null;
   saveFromDiscovery: (input: SaveFromDiscoveryInput) => {
     companyId: string;
     contactId: string | null;
@@ -541,6 +544,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const outlookSyncSeqRef = useRef(0);
   const [authUserId, setAuthUserId] = useState(getUser()?.id ?? "");
   const [masterDataSynced, setMasterDataSynced] = useState(false);
+  const [masterDataRevision, setMasterDataRevision] = useState(0);
+  const [crmSynced, setCrmSynced] = useState(false);
   const [pendingComposeLeadId, setPendingComposeLeadId] = useState<
     string | null
   >(null);
@@ -555,6 +560,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const [outlookInboxLastSyncedAt, setOutlookInboxLastSyncedAt] = useState<
     string | null
   >(null);
+  const [outlookSyncError, setOutlookSyncError] = useState<string | null>(null);
 
   useEffect(() => {
     const initial = createInitialCrmState();
@@ -588,6 +594,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       importedMasterLoadedRef.current = false;
       crmLoadedRef.current = false;
       crmSyncedRef.current = false;
+      setCrmSynced(false);
       baseIdsRef.current = {
         companies: [],
         contacts: [],
@@ -629,6 +636,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       medicines: medsRes.data.map(normalizeMedicine),
     }));
     setMasterDataSynced(true);
+    setMasterDataRevision((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -679,31 +687,47 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       const emailMeta = emailMetaRes.live ? emailMetaRes.data : [];
 
       setState((prev) => {
+        const mergeById = <T extends { id: string }>(
+          server: T[],
+          previous: T[]
+        ): T[] => {
+          const serverIds = new Set(server.map((item) => item.id));
+          const localOnly = previous.filter((item) => !serverIds.has(item.id));
+          return localOnly.length ? [...server, ...localOnly] : server;
+        };
+
+        const mergedCompanies = mergeById(companies, prev.companies);
+        const mergedContacts = mergeById(contacts, prev.contacts);
+        const mergedLeads = mergeById(leads, prev.leads);
+        const mergedDeals = mergeById(deals, prev.deals);
+        const mergedTimeline = mergeById(timeline, prev.timeline);
+
         const reconciledMeta = reconcileEmailMetaAfterSync(
           emailMeta,
           prev.emails,
           prev.emails
         );
         baseIdsRef.current = {
-          companies: companies.map((c) => c.id),
-          contacts: contacts.map((c) => c.id),
-          leads: leads.map((l) => l.id),
-          deals: deals.map((d) => d.id),
-          timeline: timeline.map((t) => t.id),
+          companies: mergedCompanies.map((c) => c.id),
+          contacts: mergedContacts.map((c) => c.id),
+          leads: mergedLeads.map((l) => l.id),
+          deals: mergedDeals.map((d) => d.id),
+          timeline: mergedTimeline.map((t) => t.id),
           emailMeta: reconciledMeta.map((e) => e.id),
         };
         return {
           ...prev,
-          companies,
-          contacts,
-          leads,
-          deals,
-          timeline,
+          companies: mergedCompanies,
+          contacts: mergedContacts,
+          leads: mergedLeads,
+          deals: mergedDeals,
+          timeline: mergedTimeline,
           emailMeta: reconciledMeta,
           emails: applyEmailMeta(prev.emails, reconciledMeta),
         };
       });
       crmSyncedRef.current = true;
+      setCrmSynced(true);
     };
 
     void syncCrm();
@@ -934,7 +958,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
             dosageForm: profile.dosageForm,
             location: profile.location,
             stage: "Saved",
-            leadScore: profile.leadScore,
+            leadScore: DEFAULT_LEAD_SCORE,
             assignedTo: getUserDisplayName(),
             followUpDate: followUpInDays(7),
             lastActivity: todayIso(),
@@ -1101,8 +1125,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           dosageForm: input.lead.dosageForm,
           location: leadLocation,
           stage: input.lead.stage ?? "Saved",
-          leadScore: input.lead.leadScore ?? 50,
-          assignedTo: input.lead.assignedTo ?? CURRENT_USER,
+          leadScore: DEFAULT_LEAD_SCORE,
+          assignedTo: input.lead.assignedTo ?? getUserDisplayName(),
           followUpDate: input.lead.followUpDate ?? followUpInDays(7),
           lastActivity: todayIso(),
           notes: input.lead.notes ?? "",
@@ -1748,6 +1772,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
       outlookSyncInFlightRef.current = true;
       setOutlookInboxSyncing(true);
+      if (!background) setOutlookSyncError(null);
 
       // Newest sync wins. Switching A -> B -> A can leave an older sync in
       // flight; without this its stale threads would land on top of B's.
@@ -1756,7 +1781,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
       try {
         const accountsRes = await listOutlookAccounts();
-        if (!accountsRes.live || isStale()) return;
+        if (isStale()) return;
+        if (!accountsRes.live) {
+          if (!background) setOutlookSyncError(accountsRes.error);
+          return;
+        }
         const accounts: OutlookAccount[] = [...accountsRes.data];
         const preferredEmailNorm = (preferredEmail ?? "").trim().toLowerCase();
         const account =
@@ -1780,6 +1809,25 @@ export function CrmProvider({ children }: { children: ReactNode }) {
             outlookAccounts: [],
             emails: [],
           }));
+          return;
+        }
+
+        // Token undecryptable / refresh-token revoked: the backend flips the
+        // account to status "error", then every Graph call 401s and gets
+        // swallowed → silent empty inbox. Surface a reconnect prompt instead.
+        if (account.status !== "active") {
+          patch((prev) => ({
+            ...prev,
+            gmailConnected: true,
+            outlookAccountId: account.id,
+            outlookEmail: account.email,
+            outlookAccounts: accounts,
+          }));
+          if (!background) {
+            setOutlookSyncError(
+              "Outlook credentials expired. Please reconnect Outlook."
+            );
+          }
           return;
         }
 
@@ -1890,6 +1938,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
               outlookEmail: account.email,
               outlookAccounts: accounts,
             }));
+            if (!background) setOutlookSyncError(allThreadsRes.error);
             return;
           }
           for (const thread of allThreadsRes.data.threads) {
@@ -1992,6 +2041,14 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         });
 
         setOutlookInboxLastSyncedAt(new Date().toISOString());
+      } catch (err) {
+        // The path used to be catch-less: any thrown error vanished at the
+        // `void syncOutlookInbox()` call site, leaving an empty inbox and no clue.
+        if (!background) {
+          setOutlookSyncError(
+            err instanceof Error ? err.message : "Couldn't load your inbox."
+          );
+        }
       } finally {
         outlookSyncInFlightRef.current = false;
         setOutlookInboxSyncing(false);
@@ -2414,8 +2471,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       ...state,
       hydrated,
       masterDataSynced,
+      masterDataRevision,
+      crmSynced,
       outlookInboxSyncing,
       outlookInboxLastSyncedAt,
+      outlookSyncError,
       saveFromDiscovery,
       createLeadWithCompany,
       updateLeadWithCompany,
@@ -2479,8 +2539,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       state,
       hydrated,
       masterDataSynced,
+      masterDataRevision,
+      crmSynced,
       outlookInboxSyncing,
       outlookInboxLastSyncedAt,
+      outlookSyncError,
       saveFromDiscovery,
       createLeadWithCompany,
       updateLeadWithCompany,

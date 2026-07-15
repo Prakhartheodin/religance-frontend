@@ -354,7 +354,6 @@ export function InboxDetailPanel({
             </div>
           </div>
         )}
-      </div>
 
       <footer className="crm-inbox-reply">
         {sentFlash && (
@@ -479,6 +478,7 @@ export function InboxDetailPanel({
           </div>
         </div>
       </footer>
+      </div>
     </section>
   );
 }
