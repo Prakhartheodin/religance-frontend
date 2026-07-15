@@ -102,8 +102,7 @@ code, pre, kbd, samp,
   flex-shrink: 0;
 }
 
-html.dark .religence-brand__text,
-html.light[data-menu-styles="dark"] .religence-brand__text {
+html.dark .religence-brand__text {
   color: #fff;
 }
 
@@ -416,7 +415,7 @@ html.dark ::-webkit-scrollbar-thumb {
 }
 
 /* ── Vertical nav: narrower rail (expanded only; keep icon/collapsed modes intact) ─ */
-html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([data-toggled="menu-hover-closed"]):not([data-toggled="icon-click-closed"]):not([data-toggled="icon-hover-closed"]):not([data-toggled="icon-text-close"]) {
+html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([data-toggled="menu-hover-closed"]):not([data-toggled="icon-click-closed"]):not([data-toggled="icon-hover-closed"]):not([data-toggled="icon-text-close"]):not([data-toggled="icon-overlay-close"]):not([data-toggled="detached-close"]):not([data-toggled="double-menu-close"]):not([data-toggled="close-menu-close"]) {
   .app-sidebar {
     width: 13.5rem !important;
     min-width: 13.5rem;
@@ -623,6 +622,28 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
   box-shadow: none !important;
 }
 
+/* Lead Discovery — shared column header row */
+.lead-discovery-salts,
+.lead-discovery-medicines,
+.lead-discovery-results {
+  .lead-discovery-col-header {
+    @apply sticky top-0 z-[2];
+    @apply bg-light/80 dark:bg-black/45;
+
+    th {
+      @apply border-b-2 border-defaultborder dark:border-white/15;
+      @apply text-defaulttextcolor dark:text-white/95;
+      @apply bg-transparent;
+      font-weight: 600 !important;
+      font-size: 0.6875rem !important;
+      letter-spacing: 0.045em;
+      text-transform: uppercase;
+      padding-block: 0.5rem !important;
+      line-height: 1.25;
+    }
+  }
+}
+
 /* Lead Discovery — panel tables: row borders, compact cells */
 .lead-discovery-salts,
 .lead-discovery-medicines {
@@ -631,10 +652,6 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     width: 100%;
     max-width: 100%;
     border-collapse: collapse;
-
-    thead th {
-      @apply border-b border-defaultborder dark:border-defaultborder/10;
-    }
 
     tbody td {
       @apply border-b border-defaultborder dark:border-defaultborder/10;
@@ -696,10 +713,6 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     min-width: 0;
     table-layout: auto;
     border-collapse: collapse;
-
-    thead th {
-      @apply border-b border-defaultborder dark:border-defaultborder/10;
-    }
 
     tbody td {
       @apply border-b border-defaultborder dark:border-defaultborder/10;
@@ -870,6 +883,53 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     letter-spacing: 0.04em;
     margin-bottom: 0.35rem;
     @apply text-textmuted;
+
+    &.active-leads-filter-label--action {
+      visibility: hidden;
+    }
+  }
+
+  .active-leads-filter-clear-spacer {
+    min-height: 2.75rem;
+  }
+
+  .active-leads-filter-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid rgb(var(--default-border) / 1);
+    border-radius: 0.25rem;
+    background: rgb(var(--custom-white) / 1);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease,
+      color 0.15s ease;
+    @apply text-textmuted;
+
+    i {
+      font-size: 0.95rem;
+      line-height: 1;
+    }
+
+    &:hover {
+      border-color: rgb(var(--primary-rgb) / 0.45);
+      background-color: rgb(var(--primary-rgb) / 0.04);
+      @apply text-primary;
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px rgb(var(--primary-rgb) / 0.2);
+      @apply text-primary;
+    }
   }
 
   .active-leads-segmented {
@@ -986,6 +1046,38 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     justify-content: center;
     padding: 3rem 1.5rem;
     text-align: center;
+  }
+
+  .active-leads-empty-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    min-width: 11rem;
+    padding-inline: 1.1rem;
+    margin-bottom: 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      transform 0.12s ease,
+      box-shadow 0.12s ease,
+      background-color 0.15s ease;
+
+    &:hover {
+      box-shadow: 0 6px 16px rgb(var(--primary-rgb) / 0.28);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow:
+        0 0 0 2px rgb(var(--primary-rgb) / 0.25),
+        0 6px 16px rgb(var(--primary-rgb) / 0.2);
+    }
+
+    &:active {
+      transform: scale(0.97);
+    }
   }
 }
 
@@ -1224,6 +1316,63 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     font-size: 0.875rem;
     background-color: rgb(var(--primary-rgb) / 0.1);
     @apply text-primary;
+  }
+
+  /* Lead Form page */
+  .lead-form-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .lead-form-page__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 6rem;
+  }
+
+  .lead-form-page__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid rgb(var(--default-border) / 1);
+    @apply bg-white dark:bg-bodybg;
+
+    .ti-btn {
+      min-height: 2.75rem;
+    }
+  }
+
+  .lead-form-subgroup {
+    padding: 0.875rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(var(--default-border) / 1);
+    @apply bg-light/20 dark:bg-black/10;
+  }
+
+  .lead-form-callout {
+    padding: 0.875rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(var(--default-border) / 1);
+    @apply bg-light/40 dark:bg-black/15;
+  }
+
+  .lead-discovery-results-status {
+    font-size: 0.75rem;
+    min-width: 0;
+  }
+
+  .lead-form-stub-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .active-leads-timeline-item {
@@ -3595,161 +3744,30 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
   }
 }
 
-.crm-inbox-compose {
-  position: fixed;
-  inset: 0;
-  z-index: 1100;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  padding: 1rem;
-  pointer-events: none;
-
-  .crm-inbox-compose-backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgb(0 0 0 / 0.45);
-    backdrop-filter: blur(2px);
-    pointer-events: auto;
-  }
-
-  .crm-inbox-compose-panel {
-    position: relative;
-    pointer-events: auto;
-    width: min(640px, calc(100vw - 2rem));
-    max-height: min(700px, calc(100vh - 2rem));
-    display: flex;
-    flex-direction: column;
-    border-radius: 1.1rem;
-    overflow: hidden;
-    box-shadow: 0 24px 60px rgb(0 0 0 / 0.28);
-    border: 1px solid rgb(var(--default-border) / 0.8);
-    background: rgb(var(--body-bg-rgb) / 1);
-    transform: translateY(0);
-    animation: composePanelIn 180ms ease-out;
-  }
-
-  .crm-inbox-compose-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 1rem 1.25rem;
-    background: rgb(var(--primary-rgb) / 1);
-    color: #fff;
-  }
-
-  .crm-inbox-compose-title {
-    font-size: 1.15rem;
-    font-weight: 600;
-    font-style: italic;
-    margin-bottom: 0;
-    color: #fff;
-  }
-
-  .crm-inbox-compose-fields {
-    flex: 1;
-    overflow: auto;
-    display: flex;
-    flex-direction: column;
-    background: rgb(var(--body-bg-rgb) / 1);
-  }
-
-  .crm-inbox-compose-row {
-    display: grid;
-    grid-template-columns: 5rem 1fr;
-    border-bottom: 1px solid rgb(var(--default-border) / 0.6);
-    align-items: center;
-
-    label {
-      padding: 0.75rem 1rem;
-      font-size: 0.78rem;
-      font-weight: 500;
-      @apply text-textmuted;
-    }
-
-    input {
-      border: none;
-      outline: none;
-      padding: 0.75rem 1rem 0.75rem 0.25rem;
-      font-size: 0.88rem;
-      background: transparent;
-      @apply text-defaulttextcolor;
-
-      &::placeholder {
-        @apply text-textmuted;
-      }
-    }
-  }
-
-  .crm-inbox-compose-body {
-    flex: 1;
-    border: none;
-    outline: none;
-    padding: 1rem 1.25rem;
-    font-size: 0.92rem;
-    line-height: 1.65;
-    resize: none;
-    min-height: 14rem;
-    background: rgb(var(--body-bg-rgb) / 1);
-    @apply text-defaulttextcolor;
-
-    &::placeholder {
-      @apply text-textmuted;
-    }
-  }
-
-  .crm-inbox-compose-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1.25rem;
-    border-top: 1px solid rgb(var(--default-border) / 0.7);
-    @apply bg-bodybg;
-  }
-}
-
-@media (max-width: 767.98px) {
-  .crm-inbox-compose {
-    align-items: center;
-    justify-content: center;
-    padding: 0.75rem;
-
-    .crm-inbox-compose-panel {
-      width: min(100%, 100vw - 1.5rem);
-      max-height: min(92vh, calc(100vh - 1.5rem));
-      border-radius: 0.9rem;
-    }
-
-    .crm-inbox-compose-header {
-      padding: 0.85rem 1rem;
-    }
-
-    .crm-inbox-compose-footer {
-      padding: 0.7rem 1rem;
-    }
-  }
-}
-
-@keyframes composePanelIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @import "./crm-inbox-theme.scss";
 
 .lead-discovery-panel-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 0.75rem;
+  row-gap: 0.5rem;
+
+  > * {
+    flex-shrink: 0;
+  }
+
+  nav {
+    margin-inline: 0.125rem;
+  }
+
   .ti-pagination {
     padding: 0;
     margin: 0;
     flex-wrap: nowrap;
     align-items: center;
+    gap: 0.25rem;
 
     li {
       display: flex;
@@ -3764,6 +3782,39 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
       font-size: 0.7rem;
       line-height: 1;
       min-height: 1.625rem;
+      min-width: 1.75rem;
     }
   }
+}
+
+/* Mobile sidebar: smooth 300ms slide instead of the 50ms base snap,
+   and start off-canvas by default so opening always slides in. */
+@media (max-width: 991.98px) {
+  .app-sidebar {
+    transition: transform 0.3s ease !important;
+  }
+  html:not([data-toggled="open"]) .app-sidebar {
+    transform: translateX(-100%);
+  }
+  html[dir="rtl"]:not([data-toggled="open"]) .app-sidebar {
+    transform: translateX(100%);
+  }
+  [data-toggled="open"] .app-sidebar {
+    transform: translateX(0);
+  }
+}
+
+/* Sidebar toggle stays a hamburger when collapsed. The template flips it to an
+   X for collapsed states, which reads as "still open / not closed". */
+html[data-toggled="icon-overlay-close"] .animated-arrow span,
+html[data-toggled="detached-close"] .animated-arrow span {
+  @apply bg-headerprimecolor dark:bg-white/60 #{!important};
+}
+html[data-toggled="icon-overlay-close"] .animated-arrow span::before,
+html[data-toggled="detached-close"] .animated-arrow span::before {
+  @apply rotate-0 top-[-0.375rem] bottom-auto #{!important};
+}
+html[data-toggled="icon-overlay-close"] .animated-arrow span::after,
+html[data-toggled="detached-close"] .animated-arrow span::after {
+  @apply rotate-0 bottom-[-0.375rem] top-auto w-[1.4375rem] #{!important};
 }
