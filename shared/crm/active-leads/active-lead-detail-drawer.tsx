@@ -4,13 +4,8 @@ import { companyInitials } from "@/shared/crm/active-leads/active-leads-utils";
 import { FollowUpDateCell } from "@/shared/crm/active-leads/follow-up-date-cell";
 import { LeadStageProgress } from "@/shared/crm/active-leads/lead-stage-progress";
 import LeadStageBadge from "@/shared/crm/active-leads/lead-stage-badge";
-import {
-  getNextLeadStage,
-  isTerminalStage,
-  LEAD_STAGES,
-} from "@/shared/crm/active-leads/lead-stages";
 import { useCrm } from "@/shared/crm/store/crm-context";
-import type { CrmEmail, CrmLead, CrmTimelineEvent, LeadStage } from "@/shared/crm/store/types";
+import type { CrmEmail, CrmLead, CrmTimelineEvent } from "@/shared/crm/store/types";
 import {
   emailPreviewSnippet,
   formatCrmDate,
@@ -94,23 +89,11 @@ export function ActiveLeadDetailDrawer({
   const {
     getLeadEmails,
     getLeadTimeline,
-    updateLead,
-    setLeadStage,
-    advanceLeadStage,
-    verifyLead,
-    markLeadLost,
-    markLeadDormant,
-    createDealFromLead,
     deals,
   } = useCrm();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
-  const [notesDraft, setNotesDraft] = useState("");
   const open = lead !== null;
-
-  useEffect(() => {
-    if (lead) setNotesDraft(lead.notes);
-  }, [lead]);
 
   useEffect(() => {
     if (open) {
@@ -135,13 +118,6 @@ export function ActiveLeadDetailDrawer({
   const timeline = getLeadTimeline(lead.id);
   const emails = getLeadEmails(lead.id);
   const leadDeals = deals.filter((d) => d.leadId === lead.id);
-  const nextStage = getNextLeadStage(lead.stage);
-
-  const saveNotes = () => {
-    if (notesDraft !== lead.notes) {
-      updateLead(lead.id, { notes: notesDraft });
-    }
-  };
 
   const openEmailInInbox = (emailId: string) => {
     router.push(`/inbox?email=${encodeURIComponent(emailId)}`);
@@ -196,6 +172,16 @@ export function ActiveLeadDetailDrawer({
                 <i className="ri-building-2-line"></i>
                 {lead.companyName}
               </p>
+              <p className="text-[0.75rem] text-textmuted mb-2">
+                Quick view — edit on full page.
+              </p>
+              <Link
+                href={`/active-leads/${lead.id}`}
+                className="text-[0.75rem] text-primary inline-flex items-center gap-1 mb-2"
+              >
+                <i className="ri-external-link-line"></i>
+                Open full page
+              </Link>
               <div className="flex flex-wrap items-center gap-2">
                 <LeadStageBadge stage={lead.stage} />
                 <LeadScoreBadge score={lead.leadScore} />
@@ -207,73 +193,11 @@ export function ActiveLeadDetailDrawer({
           </div>
         </div>
 
-        <div className="active-leads-drawer-header-block active-leads-drawer-stage-bar border-b border-defaultborder dark:border-defaultborder/10">
-          <div className="active-leads-drawer-stage-row">
-            <label
-              htmlFor="lead-stage-select"
-              className="active-leads-drawer-stage-label"
-            >
-              Stage
-            </label>
-            <select
-              id="lead-stage-select"
-              className="form-select form-select-sm active-leads-drawer-stage-select w-full"
-              value={lead.stage}
-              onChange={(e) =>
-                setLeadStage(lead.id, e.target.value as LeadStage)
-              }
-            >
-              {LEAD_STAGES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+        <div className="active-leads-drawer-header-block active-leads-drawer-stage-bar border-b border-defaultborder dark:border-defaultborder/10 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <LeadStageBadge stage={lead.stage} />
+            <LeadScoreBadge score={lead.leadScore} />
           </div>
-          {(lead.stage === "Saved" ||
-            (nextStage && !isTerminalStage(lead.stage)) ||
-            !isTerminalStage(lead.stage)) && (
-            <div className="active-leads-drawer-stage-actions">
-              {lead.stage === "Saved" && (
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-success active-leads-drawer-btn"
-                  onClick={() => verifyLead(lead.id)}
-                >
-                  Verify
-                </button>
-              )}
-              {nextStage && !isTerminalStage(lead.stage) && (
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-primary active-leads-drawer-btn"
-                  onClick={() => advanceLeadStage(lead.id)}
-                  title={`Advance to ${nextStage}`}
-                >
-                  <i className="ri-arrow-right-line me-1"></i>
-                  <span className="truncate max-w-[10rem]">{nextStage}</span>
-                </button>
-              )}
-              {!isTerminalStage(lead.stage) && (
-                <>
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-light active-leads-drawer-btn"
-                    onClick={() => markLeadDormant(lead.id)}
-                  >
-                    Dormant
-                  </button>
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-danger active-leads-drawer-btn"
-                    onClick={() => markLeadLost(lead.id)}
-                  >
-                    Lost
-                  </button>
-                </>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="active-leads-drawer-header-block active-leads-drawer-meta px-4 py-2.5 border-b border-defaultborder dark:border-defaultborder/10 grid grid-cols-2 gap-3 text-[0.8125rem]">
@@ -525,43 +449,37 @@ export function ActiveLeadDetailDrawer({
 
           {activeTab === "notes" && (
             <div className="py-4" role="tabpanel">
-              <textarea
-                className="form-control text-[0.875rem] mb-2"
-                rows={6}
-                value={notesDraft}
-                onChange={(e) => setNotesDraft(e.target.value)}
-                onBlur={saveNotes}
-              />
-              <button
-                type="button"
+              <p className="text-[0.875rem] text-textmuted whitespace-pre-wrap mb-3">
+                {lead.notes || "No notes yet."}
+              </p>
+              <Link
+                href={`/active-leads/${lead.id}`}
                 className="ti-btn ti-btn-light active-leads-drawer-btn"
-                onClick={saveNotes}
               >
-                Save notes
-              </button>
+                Edit on full page
+              </Link>
             </div>
           )}
           </div>
         </SimpleBar>
 
         <div className="ti-offcanvas-footer active-leads-drawer-footer !shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-          <button
-            type="button"
-            className="ti-btn ti-btn-primary"
-            onClick={() => onSendEmail(lead)}
-          >
-            <i className="ri-mail-send-line me-1"></i>
-            Send email
-          </button>
-          {lead.stage === "Negotiation" && leadDeals.length === 0 && (
+          {lead.contactEmail && (
             <button
               type="button"
-              className="ti-btn ti-btn-success"
-              onClick={() => createDealFromLead(lead.id)}
+              className="ti-btn ti-btn-primary"
+              onClick={() => onSendEmail(lead)}
             >
-              Close deal
+              <i className="ri-mail-send-line me-1"></i>
+              Send email
             </button>
           )}
+          <Link
+            href={`/active-leads/${lead.id}`}
+            className="ti-btn ti-btn-light"
+          >
+            Open full page
+          </Link>
           <button type="button" className="ti-btn ti-btn-light" onClick={onClose}>
             Close
           </button>

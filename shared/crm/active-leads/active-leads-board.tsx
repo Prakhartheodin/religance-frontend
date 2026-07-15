@@ -9,7 +9,6 @@ import {
 } from "@/shared/crm/active-leads/active-leads-utils";
 import { FollowUpDateCell } from "@/shared/crm/active-leads/follow-up-date-cell";
 import LeadStageBadge from "@/shared/crm/active-leads/lead-stage-badge";
-import { NewLeadModal } from "@/shared/crm/new-lead/new-lead-modal";
 import { SendEmailModal } from "@/shared/crm/send-email/send-email-modal";
 import { useCrm } from "@/shared/crm/store/crm-context";
 import {
@@ -18,7 +17,7 @@ import {
 } from "@/shared/crm/active-leads/lead-stages";
 import type { CrmLead, LeadStage } from "@/shared/crm/store/types";
 import LeadScoreBadge from "@/shared/crm/lead-discovery/lead-score-badge";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -60,6 +59,7 @@ const PIPELINE_TABS = [
 ];
 
 export default function ActiveLeadsBoard() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { leads, hydrated, pendingComposeLeadId, setPendingComposeLeadId } =
     useCrm();
@@ -72,7 +72,6 @@ export default function ActiveLeadsBoard() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null);
-  const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [sendLead, setSendLead] = useState<CrmLead | null>(null);
 
   const companyFilter = searchParams.get("company") ?? "";
@@ -194,7 +193,11 @@ export default function ActiveLeadsBoard() {
     setPipelineFilter("all");
   };
 
-  const openLead = (lead: CrmLead) => setSelectedLead(lead);
+  const openLeadDrawer = (lead: CrmLead) => setSelectedLead(lead);
+
+  const openLeadForm = (lead: CrmLead) => {
+    router.push(`/active-leads/${lead.id}`);
+  };
 
   if (!hydrated) {
     return (
@@ -219,7 +222,7 @@ export default function ActiveLeadsBoard() {
         <button
           type="button"
           className="ti-btn ti-btn-primary shrink-0 inline-flex items-center justify-center gap-1 whitespace-nowrap !w-auto !h-auto !py-2 !px-3 !text-[0.8125rem]"
-          onClick={() => setNewLeadOpen(true)}
+          onClick={() => router.push("/active-leads/new")}
         >
           <i className="ri-add-line me-1"></i>
           New lead
@@ -334,16 +337,22 @@ export default function ActiveLeadsBoard() {
                 ))}
               </select>
             </div>
-            <div className="xxl:col-span-2 lg:col-span-1 col-span-6 flex items-end">
-              {filtersActive && (
+            <div className="xxl:col-span-2 lg:col-span-1 col-span-6">
+              <label className="active-leads-filter-label active-leads-filter-label--action">
+                Filters
+              </label>
+              {filtersActive ? (
                 <button
                   type="button"
-                  className="ti-btn ti-btn-sm ti-btn-light w-full"
+                  className="active-leads-filter-clear"
                   onClick={clearFilters}
+                  aria-label="Clear all filters"
                 >
-                  <i className="ri-filter-off-line me-1"></i>
+                  <i className="ri-filter-off-line" aria-hidden="true"></i>
                   Clear
                 </button>
+              ) : (
+                <div className="active-leads-filter-clear-spacer" aria-hidden="true" />
               )}
             </div>
           </div>
@@ -404,9 +413,10 @@ export default function ActiveLeadsBoard() {
                       {filtersActive && (
                         <button
                           type="button"
-                          className="ti-btn ti-btn-sm ti-btn-primary"
+                          className="ti-btn ti-btn-primary active-leads-empty-cta"
                           onClick={clearFilters}
                         >
+                          <i className="ri-filter-off-line me-1" aria-hidden="true"></i>
                           Clear all filters
                         </button>
                       )}
@@ -420,12 +430,12 @@ export default function ActiveLeadsBoard() {
                     <tr
                       key={lead.id}
                       className={`active-leads-row cursor-pointer ${isSelected ? "is-selected" : ""}`}
-                      onClick={() => openLead(lead)}
+                      onClick={() => openLeadForm(lead)}
                       tabIndex={0}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          openLead(lead);
+                          openLeadForm(lead);
                         }
                       }}
                     >
@@ -481,8 +491,15 @@ export default function ActiveLeadsBoard() {
                       <td>
                         <FollowUpDateCell followUpDate={lead.followUpDate} />
                       </td>
-                      <td className="!pe-3 text-end">
-                        <i className="ri-arrow-right-s-line text-lg text-textmuted active-leads-row-chevron"></i>
+                      <td className="!pe-3 text-end" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-sm ti-btn-icon ti-btn-light active-leads-row-chevron-btn"
+                          aria-label="Quick view"
+                          onClick={() => openLeadDrawer(lead)}
+                        >
+                          <i className="ri-arrow-right-s-line text-lg text-textmuted active-leads-row-chevron"></i>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -493,7 +510,7 @@ export default function ActiveLeadsBoard() {
         </div>
 
         <div className="box-footer active-leads-footer !px-3 !py-2.5 border-t border-defaultborder dark:border-defaultborder/10">
-          <div className="lead-discovery-panel-footer grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 min-h-[2rem]">
+          <div className="lead-discovery-panel-footer min-h-[2rem]">
             <div className="flex items-center gap-2 justify-start min-w-0">
               <label className="flex items-center gap-1 mb-0 whitespace-nowrap shrink-0">
                 <span className="text-[0.65rem] text-textmuted leading-none">
@@ -514,11 +531,8 @@ export default function ActiveLeadsBoard() {
               </label>
             </div>
 
-            <nav
-              aria-label="Active leads pagination"
-              className="justify-self-center shrink-0"
-            >
-              <ul className="ti-pagination pagination-sm mb-0 !py-0 flex-nowrap items-center gap-0">
+            <nav aria-label="Active leads pagination" className="shrink-0">
+              <ul className="ti-pagination pagination-sm mb-0 !py-0 flex-nowrap items-center">
                 <li className="!flex items-center">
                   <button
                     type="button"
@@ -560,7 +574,7 @@ export default function ActiveLeadsBoard() {
               </ul>
             </nav>
 
-            <span className="justify-self-end text-[0.65rem] text-textmuted whitespace-nowrap tabular-nums">
+            <span className="text-[0.65rem] text-textmuted whitespace-nowrap tabular-nums">
               {page}/{totalPages}
             </span>
           </div>
@@ -573,7 +587,6 @@ export default function ActiveLeadsBoard() {
         onSendEmail={(l) => setSendLead(l)}
       />
 
-      <NewLeadModal open={newLeadOpen} onClose={() => setNewLeadOpen(false)} />
       <SendEmailModal
         lead={sendLead}
         onClose={() => setSendLead(null)}
