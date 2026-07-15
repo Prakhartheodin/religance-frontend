@@ -1,7 +1,7 @@
 # Religance CRM — New Lead Manual Add
 
 **Date:** 2026-07-15  
-**Status:** Approved — incorporates adversarial review amendments (2026-07-15)  
+**Status:** Approved — incorporates adversarial review + UI/UX review amendments (2026-07-15)  
 **Repos:** `religance` (frontend), `religence-backend` (schema follow-up in Ship 2)  
 **Related:** [`2026-07-13-crm-scalability-design.md`](./2026-07-13-crm-scalability-design.md) (Ship 2 per-item writes, `discovery-save` atomic pattern)
 
@@ -82,7 +82,8 @@ The 2026-07-15 adversarial review attacked the draft modal-based spec. The follo
 6. **Post-create UX** — redirect + toast; Results table remains read-only Excel buyers.
 7. **Shared catalogue fields** — extract `SaltMedicineFields` component; retire free-text inputs.
 8. **Full-page over modal** — unified form page replaces modal-first create (Approach 1).
-9. **Testing gates** — eight QA gates defined in Section 4.
+9. **Testing gates** — functional QA gates defined in Section 4; UI/UX gates in Section 5.6.
+10. **CRM theme fidelity** — Lead Form uses Active Leads / Ynex theme tokens (`dark:` variants, `box custom-box`); no standalone white-card RPPL layout.
 
 ---
 
@@ -110,7 +111,7 @@ The 2026-07-15 adversarial review attacked the draft modal-based spec. The follo
 
 | Source | Action | Destination |
 |--------|--------|-------------|
-| Lead Discovery Results header | **New Lead** button (right-aligned, `ti-btn ti-btn-primary`, mirrors Active Leads header) | `/active-leads/new?saltId={id}&medicineId={id}` when `activeMedicine` is set; `/active-leads/new` when not |
+| Lead Discovery Results header | **New Lead** button in Results `box-header` (see §5.2.2); `router.push` with query params | `/active-leads/new?saltId={id}&medicineId={id}` when `activeMedicine` is set; `/active-leads/new` when not |
 | Active Leads page header | **New lead** button (existing placement) | `/active-leads/new` (no query params) |
 | Active Leads table row click | Open lead | `/active-leads/[id]` |
 | Active Leads table row | Quick preview (optional) | `ActiveLeadDetailDrawer` — secondary; “Open full page” link to `/active-leads/[id]` |
@@ -135,9 +136,11 @@ When navigating from Discovery with query params:
 
 Single page component `LeadFormPage` with `mode: 'create' | 'edit'` driven by route.
 
-**Page chrome:** standard content layout header with breadcrumb
-`Active Leads → {New lead | {companyName}}`. Footer sticky bar: **Cancel** (back to `/active-leads`),
-**Save** (create or update).
+**Page chrome:** full-page route inside `(contentlayout)` — app sidebar and header persist (same shell
+as Active Leads list). Page header uses `Pageheader` breadcrumb:
+`Active Leads` (link to `/active-leads`) → `{New lead | {companyName}}`. Below breadcrumb, optional
+one-line subtitle in `text-textmuted text-[0.8125rem]`. Footer sticky bar: **Cancel** (navigate to
+`/active-leads`), **Save** (create or update). See Section 5 for layout, theme, and truncation rules.
 
 #### v1 sections
 
@@ -210,10 +213,12 @@ Single page component `LeadFormPage` with `mode: 'create' | 'edit'` driven by ro
 
 ### 1.7 Accessibility
 
-- Page title and `h1` reflect mode (New lead / Edit lead).
+Baseline requirements; full checklist in Section 5.4.
+
+- Page title (`Seo`) and visible heading reflect mode (New lead / Edit lead).
 - Form sections use `fieldset` + `legend`.
 - Save button exposes `aria-busy` during submit.
-- Stub sections use `aria-disabled="true"` on placeholder content.
+- Stub sections are informational only (not interactive); see Section 5.3.5.
 
 ---
 
@@ -498,6 +503,8 @@ On company name blur, scan `catalogueBuyers` (from master data) for `normalizeCo
 | Q7 | Edit round-trip | Edit notes + company city on `/active-leads/[id]` → persists after reload |
 | Q8 | Entry point parity | Active Leads “New lead” and Discovery “New Lead” both land on same form page |
 
+Functional gates above; UI/UX visual gates in Section 5.6 (Q9–Q16).
+
 ### 4.5 Phase 2 backlog
 
 | Item | Notes |
@@ -513,6 +520,220 @@ On company name blur, scan `catalogueBuyers` (from master data) for `normalizeCo
 | Save-and-email shortcut | Optional compose launch post-create |
 | Org-wide dedupe index | `{ orgId, normalizedCompanyName }` unique partial index |
 | Verification Queue routing | Option to force `Saved` stage for manual leads |
+
+---
+
+## Section 5 — UI/UX Requirements
+
+Binding visual and interaction requirements from the 2026-07-15 UI/UX adversarial review. All items
+are testable in implementation and QA.
+
+### 5.1 Theme scope (no generic white-card layout)
+
+| Surface | Theme | Rationale |
+|---------|-------|-----------|
+| **Lead Form page** (`/active-leads/new`, `/active-leads/[id]`) | **Active Leads theme** — Ynex `box custom-box`, theme-aware borders/backgrounds | Child route of Active Leads; matches list page, drawer, and settings form patterns |
+| **Discovery “New Lead” button** (Results `box-header`) | **Lead Discovery panel theme** — same `box-header` / `ti-btn` tokens as Results panel | Button lives inside `lead-discovery-board`; must not introduce foreign styling |
+
+**Do not** invent a standalone RPPL white-card layout. Reuse existing CRM tokens:
+
+| Token / class | Usage |
+|---------------|-------|
+| `box custom-box` | Page shell and each form section card |
+| `box-header border-b border-defaultborder dark:border-defaultborder/10` | Section titles |
+| `box-body` | Section field grids |
+| `box-footer` (form page only) | Sticky Save/Cancel bar |
+| `bg-white dark:bg-bodybg` | Panel backgrounds (Discovery board, form sections) |
+| `border-defaultborder dark:border-defaultborder/10` | Borders |
+| `text-defaulttextcolor`, `text-textmuted`, `dark:text-textmuted/90` | Body and helper text |
+| `form-label text-[0.75rem]` | Field labels (matches `NewLeadModal`, settings pages) |
+| `form-control`, `form-select` | Inputs — full size on page (not `-sm`; modal `-sm` is modal-only) |
+| `ti-btn ti-btn-primary`, `ti-btn ti-btn-light` | Primary / secondary actions |
+| `active-leads-info-card`, `active-leads-info-card-icon` | Sub-group blocks inside Lead Details (company vs product vs pipeline) |
+| `alert alert-success` / `alert alert-danger` | Sync errors, save failures |
+| `badge bg-light text-defaulttextcolor` | Phase-2 stub section markers |
+| Empty-state pattern from `EmptyPanel` in `lead-discovery-board.tsx` | Stub section bodies: `avatar avatar-lg bg-primary/10 text-primary` + muted message |
+
+Dark mode is first-class: every new rule must include `dark:` variants where sibling CRM surfaces do.
+
+### 5.2 Layout rules
+
+#### 5.2.1 Lead Form page shell
+
+```
+(contentlayout) — sidebar + app header unchanged
+└── .lead-form-page (new wrapper in globals.scss)
+    ├── Pageheader (breadcrumb)
+    ├── .lead-form-page__body (scrollable)
+    │   └── stacked .box.custom-box sections (Lead Details, Contacts, stubs…)
+    └── .lead-form-page__footer (sticky)
+        └── Cancel + Save
+```
+
+| Rule | Requirement |
+|------|-------------|
+| Sidebar | Persists — same `(contentlayout)` route group as `/active-leads` |
+| Page width | `container-fluid` / full content width; inner sections `max-w-5xl mx-auto` optional centering |
+| Section stack | Vertical gap `1rem` (`mb-4` between sections); no nested modals |
+| Scroll | `.lead-form-page__body` is `flex-1 min-h-0 overflow-y-auto`; footer stays visible |
+| Footer offset | Body `padding-bottom` ≥ footer height + `1rem` so last field is never hidden under sticky bar |
+| Grid | `grid grid-cols-12 gap-3` inside sections; `col-span-12` default; `col-span-6` for paired fields at `md+` |
+| Flex children | Every flex/grid child that can shrink must have `min-w-0` (lesson from Lead Discovery truncation fixes) |
+
+#### 5.2.2 Discovery Results header — “New Lead” without crowding status line
+
+Current Results `box-header` stacks `box-title` + status spans. Adding a button must not truncate the
+status line or overlap the title.
+
+**Required structure** (replace flat `box-header` content):
+
+```html
+<div class="box-header border-b … flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+  <div class="min-w-0 flex-1">
+    <div class="box-title mb-0">Results …</div>
+    <!-- status line: buyers count, Live, Loading, error — always below title, never beside button -->
+    <div class="lead-discovery-results-status text-[0.75rem] min-w-0 truncate sm:whitespace-normal">
+      …status…
+    </div>
+  </div>
+  <button class="ti-btn ti-btn-primary shrink-0 …">New Lead</button>
+</div>
+```
+
+| Rule | Requirement |
+|------|-------------|
+| Button placement | Right on `sm+`; full-width below title block on `<576px` |
+| Status line | Lives under title, not in the same row as the button |
+| Title truncation | `box-title` may truncate with `title` tooltip; status line wraps, does not overlap button |
+| Button always enabled | Per D13; never `disabled` due to empty selection |
+| Button label | `New Lead` (Discovery) — matches Active Leads “New lead” intent; casing differs per surface |
+
+#### 5.2.3 Responsive breakpoints
+
+| Breakpoint | Behaviour |
+|------------|-----------|
+| `<576px` | Single-column fields; Discovery New Lead button stacks under title; footer buttons full-width stacked (Save above Cancel) |
+| `576–991px` | Two-column field pairs; breadcrumb may wrap |
+| `≥992px` | Full grid; Discovery header row layout |
+
+### 5.3 Component specs
+
+#### 5.3.1 Buttons
+
+| Variant | Classes | Min height | Notes |
+|---------|---------|------------|-------|
+| Primary (Save, New Lead) | `ti-btn ti-btn-primary` + `!py-2 !px-3 !text-[0.8125rem] !w-auto !h-auto shrink-0 inline-flex items-center justify-center gap-1 whitespace-nowrap` | **2.75rem (44px)** | Match `active-leads-board` New lead button |
+| Secondary (Cancel) | `ti-btn ti-btn-light` | **2.75rem** | Navigates to `/active-leads` |
+| Icon close (if used) | `ti-btn ti-btn-sm ti-btn-icon ti-btn-light` | 2.75rem hit area via padding | `aria-label="Close"` |
+
+**Disabled Save — must feel intentional, not broken:**
+
+| Disable reason | UI requirement |
+|----------------|----------------|
+| Validation errors | Save `disabled`; inline errors visible; **no** tooltip needed (errors explain) |
+| Catalogue empty | Save `disabled`; page-level `alert alert-warning` banner; banner text explains why |
+| Submit in flight | Save `disabled`; spinner icon inside button; `aria-busy="true"`; label becomes “Saving…” |
+| Pristine edit (no changes) | Save `disabled` on edit mode only; `title="No changes to save"` |
+
+Never disable Cancel or New Lead entry buttons during loading.
+
+#### 5.3.2 Form validation placement
+
+| Event | Placement |
+|-------|-----------|
+| Field-level (required, email format, salt↔medicine) | `text-[0.75rem] text-danger mt-1` directly under the field; `aria-invalid="true"` + `aria-describedby` pointing to error id |
+| Dedupe / warning callouts | `alert` or bordered callout **above** the affected section body (company name area), not in footer |
+| Sync / save failure | Top of `.lead-form-page__body` — `alert alert-danger`; form stays dirty |
+| First invalid on submit | Focus moves to first invalid field (WCAG focus-management) |
+
+#### 5.3.3 Loading states
+
+| State | UI |
+|-------|-----|
+| Page load (edit) | Skeleton or “Loading lead…” centered in body; footer hidden until hydrated |
+| Catalogue loading | Salt/medicine `form-select` `disabled` + `aria-busy="true"`; placeholder option “Loading…” |
+| Save | See §5.3.1 |
+| Cancel with dirty form | `ConfirmDialog` or native `confirm()` — “Discard unsaved changes?” |
+
+#### 5.3.4 Navigation and unsaved changes
+
+| Action | Behaviour |
+|--------|-----------|
+| Cancel | `router.push('/active-leads')` after dirty check |
+| Breadcrumb “Active Leads” | `Link` to `/active-leads`; same dirty guard |
+| Browser back / `beforeunload` | Existing §1.5 guard |
+| Post-create | `router.replace` — no extra back-stack entry |
+| Focus on route enter | Move focus to `h3` in `Pageheader` (focus-on-route-change) |
+
+#### 5.3.5 Stub sections (Follow-ups, Samples, Quotations)
+
+Stubs must read as **planned**, not **broken**.
+
+| Element | Requirement |
+|---------|-------------|
+| Section header | Normal `box-title` styling + `badge bg-light text-defaulttextcolor ms-2` with text `Phase 2` or `Coming soon` |
+| Body | Reuse `StubSection` → `EmptyPanel` pattern: centered icon, muted message |
+| Follow-ups copy | “Follow-up scheduling will be available in a future release.” |
+| Samples / Quotations copy | “Pending client documentation.” (per §1.3) |
+| Interactivity | **No** disabled buttons inside stubs; no `aria-disabled` on empty regions |
+| Visual weight | Stub body opacity normal; do **not** grey out the whole section card (avoids “broken” look) |
+
+### 5.4 Accessibility checklist
+
+| # | Requirement | Pass test |
+|---|-------------|-----------|
+| A1 | Normal text contrast ≥ 4.5:1 in light and dark mode | axe / manual spot-check on form labels, muted text, stub copy |
+| A2 | Visible `focus-visible` ring on all buttons, inputs, links | Tab through form in both themes |
+| A3 | Every input has `<label htmlFor>` or `aria-label` | DOM inspection |
+| A4 | Error text linked via `aria-describedby` | Screen reader announces error on focus |
+| A5 | Save exposes `aria-busy` while saving | Inspect during submit |
+| A6 | Toast uses `aria-live="polite"` (existing toast pattern) | Create lead → toast announced |
+| A7 | Page `Seo title` matches visible heading | New vs edit |
+| A8 | Stub sections: `aria-labelledby` on region pointing to section heading | No focusable controls inside stubs |
+
+### 5.5 Truncation prevention checklist
+
+Apply before merge; derived from Lead Discovery / Active Leads / settings pagination fixes.
+
+| # | Check | Requirement |
+|---|-------|-------------|
+| T1 | Flex/grid overflow | All shrinkable flex children have `min-w-0` |
+| T2 | Long company / title names | `truncate` + `title` attribute on breadcrumb leaf and auto-title preview |
+| T3 | Discovery header | Status line never overlaps New Lead button at 320px–1920px widths |
+| T4 | Sticky footer | Last form field scrolls fully above footer on 768px-height viewport |
+| T5 | Dropdown labels | Salt/medicine options use full text in native select; no fixed-width clipping on control |
+| T6 | Callout text | Warning/info callouts wrap (`whitespace-normal`); no `overflow:hidden` on alert bodies |
+| T7 | Section headings | `box-title` single-line truncate only when paired with `title` tooltip |
+| T8 | Pagination (if added later) | Use `.lead-discovery-panel-footer` flex-wrap pattern — count left, controls right, `flex-shrink: 0` on children |
+
+### 5.6 UI/UX QA gates
+
+| # | Gate | Pass criteria |
+|---|------|---------------|
+| Q9 | Dark mode parity | Lead Form readable in dark mode; borders/backgrounds match Active Leads list |
+| Q10 | Discovery header layout | New Lead visible; status line (“Live · N buyers…”) not truncated or overlapped at 375px and 1280px |
+| Q11 | Button touch targets | Save, Cancel, New Lead, Discovery New Lead all ≥ 44px tall |
+| Q12 | Disabled Save clarity | Empty catalogue → banner + disabled Save; invalid pair → inline errors + disabled Save; in-flight → spinner + “Saving…” |
+| Q13 | Stub sections | Samples/Quotations/Follow-ups show icon empty state; no dead buttons; Phase 2 badge visible |
+| Q14 | Sticky footer | Save/Cancel always visible; no field hidden under footer when scrolled to end |
+| Q15 | Breadcrumb back | “Active Leads” link returns to list; dirty guard fires |
+| Q16 | Focus order | Logical tab order through sections; first invalid field focused on failed submit |
+
+### 5.7 New / modified styles (`globals.scss`)
+
+Add under a `/* Lead Form page */` comment — extend existing tokens only:
+
+| Class | Purpose |
+|-------|---------|
+| `.lead-form-page` | Page flex column; `min-h-0` |
+| `.lead-form-page__body` | Scrollable content |
+| `.lead-form-page__footer` | `sticky bottom-0 z-[1] border-t … bg-white dark:bg-bodybg` + flex gap |
+| `.lead-form-section` | Optional — `box custom-box mb-4` alias |
+| `.lead-form-callout` | Dedupe info/warning — bordered rounded box matching `active-leads-info-card` |
+| `.lead-discovery-results-status` | Status sub-line under Results title |
+| `.lead-form-stub-body` | Centers EmptyPanel content inside stub sections |
+
+Do **not** add RPPL-specific color variables or new button variants.
 
 ---
 
@@ -542,5 +763,5 @@ On company name blur, scan `catalogueBuyers` (from master data) for `normalizeCo
 5. Routes `new/page.tsx`, `[id]/page.tsx`
 6. Wire Discovery + Active Leads entry points
 7. Deprecate `NewLeadModal`
-8. Styles + accessibility pass
-9. QA gates Q1–Q8
+8. Styles + accessibility pass (Section 5)
+9. QA gates Q1–Q16
