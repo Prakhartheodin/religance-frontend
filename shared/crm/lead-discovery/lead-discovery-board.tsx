@@ -11,6 +11,8 @@ import MedicinesTablePanel from "@/shared/crm/lead-discovery/medicines-table-pan
 import SaltsTablePanel from "@/shared/crm/lead-discovery/salts-table-panel";
 import type { DiscoveredCompany } from "@/shared/crm/lead-discovery/types";
 import { useCrm } from "@/shared/crm/store/crm-context";
+import { resolvePrefillSaltId } from "@/shared/crm/store/lead-form-utils";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const PANEL_SCROLL_MAX = "calc(100vh - 11rem)";
@@ -35,6 +37,7 @@ function EmptyPanel({
 }
 
 export default function LeadDiscoveryBoard() {
+  const router = useRouter();
   const { salts, medicines: allMedicines, masterDataSynced } = useCrm();
   const [catalogueBuyers, setCatalogueBuyers] = useState<BackendBuyerMaster[]>([]);
   const [buyersLoading, setBuyersLoading] = useState(true);
@@ -57,7 +60,7 @@ export default function LeadDiscoveryBoard() {
 
   const companies = useMemo(() => {
     if (!activeMedicine) return [];
-    const salt = salts.find((s) => s.id === activeMedicine.saltId);
+    const salt = salts.find((s) => activeMedicine.saltIds.includes(s.id));
     if (!salt) return [];
     return getCompaniesForMedicine(activeMedicine, salt.name, catalogueBuyers);
   }, [activeMedicine, salts, catalogueBuyers]);
@@ -109,6 +112,37 @@ export default function LeadDiscoveryBoard() {
     setProfileCompany(null);
   };
 
+  const activeSaltId = useMemo(() => {
+    if (!activeMedicine) return null;
+    const fromChecked = activeMedicine.saltIds.find((id) =>
+      checkedSaltIds.includes(id)
+    );
+    return fromChecked ?? activeMedicine.saltIds[0] ?? null;
+  }, [activeMedicine, checkedSaltIds]);
+
+  const handleNewLead = () => {
+    const params = new URLSearchParams();
+    if (activeMedicine) {
+      params.set("medicineId", activeMedicine.id);
+      const saltId = resolvePrefillSaltId(activeSaltId, activeMedicine);
+      if (saltId) params.set("saltId", saltId);
+    }
+    const q = params.toString();
+    router.push(q ? `/active-leads/new?${q}` : "/active-leads/new");
+  };
+
+  const resultsStatus = buyersError ? (
+    <span className="text-danger">{buyersError}</span>
+  ) : buyersLoading ? (
+    <span className="text-textmuted">Loading buyers…</span>
+  ) : catalogueBuyers.length > 0 ? (
+    <span className="text-success">
+      Live · {catalogueBuyers.length} buyers from catalogue
+    </span>
+  ) : !masterDataSynced ? (
+    <span className="text-textmuted">Syncing salts & medicines…</span>
+  ) : null;
+
   return (
     <>
       <div className="lead-discovery-board grid grid-cols-12 gap-0 border border-defaultborder dark:border-defaultborder/10 rounded-md bg-white dark:bg-bodybg">
@@ -139,31 +173,33 @@ export default function LeadDiscoveryBoard() {
         {/* Companies / buyers — full width below xl so table has room */}
         <div className="xxl:col-span-8 xl:col-span-12 col-span-12 min-w-0">
           <div className="box custom-box mb-0 border-0 shadow-none rounded-none h-full flex flex-col min-h-[calc(100vh-10rem)] min-w-0 xxl:rounded-se-md xl:rounded-b-md">
-            <div className="box-header border-b border-defaultborder dark:border-defaultborder/10">
-              <div className="box-title mb-0">
-                Results
-                {activeMedicine && (
-                  <span className="text-textmuted dark:text-textmuted/90 font-normal text-[0.8125rem] ms-1">
-                    · {companies.length} buyers
-                    {companies.length > 0 && catalogueBuyers.length > 0
-                      ? " (catalogue)"
-                      : ""}
-                  </span>
+            <div className="box-header border-b border-defaultborder dark:border-defaultborder/10 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="box-title mb-0">
+                  Results
+                  {activeMedicine && (
+                    <span className="text-textmuted dark:text-textmuted/90 font-normal text-[0.8125rem] ms-1">
+                      · {companies.length} buyers
+                      {companies.length > 0 && catalogueBuyers.length > 0
+                        ? " (catalogue)"
+                        : ""}
+                    </span>
+                  )}
+                </div>
+                {resultsStatus && (
+                  <div className="lead-discovery-results-status text-[0.75rem] min-w-0 truncate sm:whitespace-normal mt-1">
+                    {resultsStatus}
+                  </div>
                 )}
               </div>
-               {buyersError ? (
-                 <span className="text-[0.75rem] text-danger">{buyersError}</span>
-               ) : buyersLoading ? (
-                 <span className="text-[0.75rem] text-textmuted">Loading buyers…</span>
-                ) : catalogueBuyers.length > 0 ? (
-                  <span className="text-[0.75rem] text-success">
-                    Live · {catalogueBuyers.length} buyers from catalogue
-                  </span>
-               ) : !masterDataSynced ? (
-                 <span className="text-[0.75rem] text-textmuted">
-                   Syncing salts & medicines…
-                 </span>
-               ) : null}
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary shrink-0 inline-flex items-center justify-center gap-1 whitespace-nowrap !w-auto !h-auto !py-2 !px-3 !text-[0.8125rem] !min-h-[2.75rem]"
+                onClick={handleNewLead}
+              >
+                <i className="ri-add-line me-1"></i>
+                New Lead
+              </button>
             </div>
             <div className="box-body p-0 flex-1 min-h-0 min-w-0">
               <div
@@ -191,7 +227,7 @@ export default function LeadDiscoveryBoard() {
                 ) : (
                   <div className="table-responsive lead-discovery-results">
                     <table className="table table-hover ti-custom-table mb-0 w-full">
-                      <thead className="ti-custom-table-head sticky top-0 z-[1] bg-white dark:bg-bodybg">
+                      <thead className="ti-custom-table-head lead-discovery-col-header">
                         <tr>
                           <th scope="col" className="!text-start">
                             Company
