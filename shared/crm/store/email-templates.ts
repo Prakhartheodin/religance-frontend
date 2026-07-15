@@ -119,13 +119,24 @@ Best regards,
   };
 }
 
+const TEMPLATE_VAR_LABELS = Object.fromEntries(
+  TEMPLATE_VARIABLES.map(({ key, label }) => [key, label])
+) as Record<TemplateVariableKey, string>;
+
+/** Readable bracket labels when a merge field has no value yet. */
+export function templatePlaceholder(key: TemplateVariableKey): string {
+  return `[${TEMPLATE_VAR_LABELS[key] ?? key}]`;
+}
+
 export function applyTemplate(
   text: string,
-  vars: TemplateVariables
+  vars: Partial<TemplateVariables> | TemplateVariables
 ): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
-    const v = vars[key as TemplateVariableKey];
-    return v ?? "";
+    const typedKey = key as TemplateVariableKey;
+    const value = vars[typedKey]?.trim();
+    if (value) return value;
+    return templatePlaceholder(typedKey);
   });
 }
 

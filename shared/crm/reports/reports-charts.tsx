@@ -2,13 +2,36 @@
 
 import type { ApexOptions } from "apexcharts";
 import dynamic from "next/dynamic";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   MetricCardData,
   ReportsSnapshot,
 } from "@/shared/crm/reports/reports-utils";
 
 const ApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
+
+function useChartContainerHeight(minHeight = 300) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(minHeight);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const updateHeight = () => {
+      const nextHeight = Math.max(minHeight, Math.floor(element.clientHeight));
+      setHeight((current) => (current === nextHeight ? current : nextHeight));
+    };
+
+    updateHeight();
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [minHeight]);
+
+  return { ref, height };
+}
 
 function sparkOptions(color: string): ApexOptions {
   return {
@@ -165,11 +188,12 @@ export function LeadsSourceDonut({ report }: { report: ReportsSnapshot }) {
 
 export function RevenueAnalyticsChart({ report }: { report: ReportsSnapshot }) {
   const { categories, sales, revenue, profit } = report.revenueAnalytics;
+  const { ref, height } = useChartContainerHeight(350);
 
   const options: ApexOptions = useMemo(
     () => ({
       chart: {
-        height: 350,
+        height,
         type: "line",
         toolbar: { show: true },
         dropShadow: {
@@ -190,6 +214,12 @@ export function RevenueAnalyticsChart({ report }: { report: ReportsSnapshot }) {
       grid: {
         borderColor: "#f1f1f1",
         strokeDashArray: 3,
+        padding: {
+          top: 0,
+          right: 8,
+          bottom: 0,
+          left: 8,
+        },
       },
       stroke: {
         curve: "smooth",
@@ -230,14 +260,18 @@ export function RevenueAnalyticsChart({ report }: { report: ReportsSnapshot }) {
         ],
       },
     }),
-    [categories]
+    [categories, height]
   );
 
   return (
-    <div id="crm-revenue-analytics" className="w-full min-w-[280px]">
+    <div
+      ref={ref}
+      id="crm-revenue-analytics"
+      className="w-full min-w-[280px] h-full min-h-[350px]"
+    >
       <ApexChart
         type="line"
-        height={350}
+        height={height}
         width="100%"
         options={options}
         series={[
@@ -310,18 +344,25 @@ export function ProfitEarnedChart({
 
 export function PipelineOverviewChart({ report }: { report: ReportsSnapshot }) {
   const { categories, newLeads, emailsSent, dealsWon } = report.pipelineOverview;
+  const { ref, height } = useChartContainerHeight(320);
 
   const options: ApexOptions = useMemo(
     () => ({
       chart: {
         stacked: true,
         type: "bar",
-        height: 325,
+        height,
         toolbar: { show: false },
       },
       grid: {
         borderColor: "#f5f4f4",
         strokeDashArray: 5,
+        padding: {
+          top: 0,
+          right: 8,
+          bottom: 0,
+          left: 8,
+        },
       },
       colors: [
         "rgb(132, 90, 223)",
@@ -355,17 +396,24 @@ export function PipelineOverviewChart({ report }: { report: ReportsSnapshot }) {
         categories,
         axisBorder: { show: false },
         axisTicks: { show: false },
-        labels: { rotate: -90 },
+        labels: {
+          rotate: -90,
+          offsetY: 0,
+        },
       },
     }),
-    [categories]
+    [categories, height]
   );
 
   return (
-    <div id="pipeline-overview" className="w-full min-w-[280px]">
+    <div
+      ref={ref}
+      id="pipeline-overview"
+      className="w-full min-w-[280px] h-full min-h-[320px]"
+    >
       <ApexChart
         type="bar"
-        height={325}
+        height={height}
         width="100%"
         options={options}
         series={[

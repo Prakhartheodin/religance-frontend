@@ -780,11 +780,17 @@ export function buildReportsSnapshot(
     },
   ];
 
-  const statusTotal = statusItems.reduce((s, i) => s + i.count, 0) || 1;
-  const segments = statusItems.map((i) => ({
-    pct: Math.max(4, Math.round((i.count / statusTotal) * 100)),
-    segmentClass: i.segmentClass,
-  }));
+  const statusTotal = statusItems.reduce((s, i) => s + i.count, 0);
+  const segments =
+    statusTotal === 0
+      ? statusItems.map((i) => ({
+          pct: 0,
+          segmentClass: i.segmentClass,
+        }))
+      : statusItems.map((i) => ({
+          pct: Math.round((i.count / statusTotal) * 100),
+          segmentClass: i.segmentClass,
+        }));
 
   const saltMap = new Map<string, number>();
   for (const lead of leads) {

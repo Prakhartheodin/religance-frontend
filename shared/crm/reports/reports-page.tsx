@@ -514,7 +514,7 @@ export default function ReportsPage() {
               <div className="box-title">Pipeline Overview</div>
               <BoxMenu />
             </div>
-            <div className="box-body flex-1 overflow-x-auto">
+            <div className="box-body flex-1 flex flex-col min-h-0 overflow-x-auto">
               <PipelineOverviewChart report={report} />
             </div>
           </div>
@@ -659,7 +659,7 @@ export default function ReportsPage() {
                     View All
                   </Link>
                 </div>
-                <div className="box-body !py-5 flex-1 overflow-x-auto">
+                <div className="box-body !py-5 flex-1 flex flex-col min-h-0 overflow-x-auto">
                   <RevenueAnalyticsChart report={report} />
                 </div>
               </div>
@@ -714,12 +714,12 @@ export default function ReportsPage() {
                 </div>
                 <div className="box-body flex-1">
                   <div className="flex items-center mb-[0.8rem] flex-wrap gap-2">
-                    <h4 className="font-bold mb-0 text-[1.5rem]">
+                    <h4 className="font-bold mb-0 text-[1.5rem] tabular-nums">
                       {report.dealsStatus.total.toLocaleString()}
                     </h4>
                     <div className="ms-0 sm:ms-2">
                       <span
-                        className={`py-[0.18rem] px-[0.45rem] rounded-sm !font-medium !text-[0.75em] ${
+                        className={`py-[0.18rem] px-[0.45rem] rounded-sm !font-medium !text-[0.75em] tabular-nums ${
                           report.dealsStatus.weekChange.startsWith("-")
                             ? "text-danger bg-danger/10"
                             : "text-success bg-success/10"
@@ -735,27 +735,34 @@ export default function ReportsPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex w-full h-[0.3125rem] mb-6 rounded-full overflow-hidden">
-                    {report.dealsStatus.segments.map((seg, i) => (
-                      <div
-                        key={i}
-                        className={`flex flex-col justify-center overflow-hidden ${seg.segmentClass} ${
-                          i === 0
-                            ? "rounded-s-[0.625rem]"
-                            : i === report.dealsStatus.segments.length - 1
-                              ? "rounded-e-[0.625rem]"
-                              : "rounded-none"
-                        }`}
-                        style={{ width: `${seg.pct}%` }}
-                      />
-                    ))}
+                  <div
+                    className={`flex w-full h-[0.3125rem] mb-6 rounded-full overflow-hidden ${
+                      report.dealsStatus.total === 0
+                        ? "bg-[#8c9097]/15 dark:bg-white/10"
+                        : ""
+                    }`}
+                  >
+                    {report.dealsStatus.total > 0 &&
+                      report.dealsStatus.segments.map((seg, i) => (
+                        <div
+                          key={i}
+                          className={`flex flex-col justify-center overflow-hidden ${seg.segmentClass} ${
+                            i === 0
+                              ? "rounded-s-[0.625rem]"
+                              : i === report.dealsStatus.segments.length - 1
+                                ? "rounded-e-[0.625rem]"
+                                : "rounded-none"
+                          }`}
+                          style={{ width: `${seg.pct}%` }}
+                        />
+                      ))}
                   </div>
                   <ul className="list-none mb-0 pt-2 crm-deals-status">
                     {report.dealsStatus.items.map((item) => (
                       <li key={item.label} className={item.statusClass}>
                         <div className="flex items-center text-[0.813rem] justify-between">
                           <div>{item.label}</div>
-                          <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                          <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50 tabular-nums">
                             {item.count} deals
                           </div>
                         </div>

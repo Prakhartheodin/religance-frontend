@@ -24,7 +24,7 @@ backend) until client documentation arrives.
 
 **v1 backend scope:** `religence-backend` `crm-entities.ts` gains `city`, `country`, `gstin`, `pan`
 on companies and `saltId`, `medicineId` on leads in the **same release** as the frontend — not deferred
-to Ship 2. Duplicate leads for the same company + medicine are **blocked** at save (not warn-and-allow).
+to Ship 2. Duplicate leads for the same company + medicine trigger a **confirmation dialog** — user can edit the existing lead, create a duplicate anyway, or cancel.
 
 Persistence in v1 is the same interim model as the rest of the CRM: atomic client state update,
 then debounced per-entity saves via `persist()`. Ship 2 replaces multi-PUT creates with
@@ -38,7 +38,7 @@ then debounced per-entity saves via `persist()`. Ship 2 replaces multi-PUT creat
 |---|----------|--------|
 | P1 | **Company fields v1:** Add `city`, `country`, `gstin`, `pan` to backend Mongo schema in the same release as frontend | User product decision |
 | P2 | **Lead FKs v1:** Persist `saltId` and `medicineId` on leads (frontend types + backend schema) in v1 | User product decision |
-| P3 | **Duplicate leads:** **Block save** when same `(companyId, medicineId)` OR `(companyId, normalize(matchedMedicine))` already exists — do NOT warn-and-allow | User product decision |
+| P3 | **Duplicate leads:** On match for same `(companyId, medicineId)` OR `(companyId, normalize(matchedMedicine))`, show **confirmation dialog** — user chooses **Edit existing lead**, **Create duplicate anyway**, or **Cancel** | User product decision (revised) |
 | P4 | **Row click primary:** Table row click navigates to `/active-leads/[id]`; drawer is read-only “Quick view” only (explicit chevron/button), except Send Email if applicable | Approved design Approach 1 |
 
 ---
@@ -54,7 +54,7 @@ then debounced per-entity saves via `persist()`. Ship 2 replaces multi-PUT creat
 | D5 | **Samples & Quotations:** rendered as section stubs in v1; no API, no persistence |
 | D6 | **Entry points:** Lead Discovery Results header **and** Active Leads page header both navigate to `/active-leads/new` |
 | D7 | **Pre-fill:** Discovery **must** pass `saltId` and `medicineId` in URL when `activeMedicine` is set; form page **must not** reference `checkedSaltIds` |
-| D8 | **Dedupe:** company by normalized name; contact by `(companyId, lower(email))`; **block save** on duplicate lead for same `(companyId, medicineId)` or `(companyId, normalize(matchedMedicine))` |
+| D8 | **Dedupe:** company by normalized name; contact by `(companyId, lower(email))`; duplicate lead for same `(companyId, medicineId)` or `(companyId, normalize(matchedMedicine))` → **confirmation dialog** (P3) — not a hard block |
 | D9 | **Contact:** optional in v1 (same as Active Leads `NewLeadModal`) |
 | D10 | **No `discoveryCompanyId`** on manual creates in v1 — manual leads are intentionally outside the Excel buyer graph |
 | D11 | **Deprecate `NewLeadModal`:** replace with route redirect; `ActiveLeadDetailDrawer` is read-only quick-preview secondary (P4) |
@@ -90,7 +90,7 @@ The 2026-07-15 adversarial review attacked the draft modal-based spec. The follo
    `saveFromDiscovery` (single `patch()` for company + contact + lead + timeline).
 2. **Persistence honesty** — v1 interim = atomic client patch + existing debounced `persist()` saves;
    explicit Ship 2 endpoint follow-up; Lead Form uses local `saveError` state — **not** `syncError`.
-3. **Dedupe rules** — normalized company name, contact email, duplicate-lead **block** (see D8, P3).
+3. **Dedupe rules** — normalized company name, contact email, duplicate-lead **confirmation dialog** (see D8, P3, §1.8).
 4. **Pre-fill validation** — Discovery passes `saltId` in URL; form resolves salt from URL only (not
    `checkedSaltIds`); salt must be in `medicine.saltIds`; submit blocked on invalid pair.
 5. **Explicit defaults** — auto-title, score, follow-up date (pipeline field), dosageForm (see Section 2).
@@ -232,7 +232,7 @@ one-line subtitle in `text-textmuted text-[0.8125rem]`. Footer sticky bar: **Can
 | No catalogue salts/medicines | Banner: “Add salts and medicines in Settings first.” Save disabled. |
 | Invalid salt↔medicine pair | Inline field error; Save disabled. |
 | Duplicate company name found | Non-blocking info callout: “Existing company ‘{name}’ will be linked.” Show matched company summary. |
-| Duplicate lead (same company + medicine) | **Blocking** error callout: “A lead for this company and medicine already exists.” Link to existing lead. **Save disabled.** |
+| Duplicate lead (same company + medicine) | **Confirmation dialog** on Save (§1.8) — not a disabled Save button |
 | Catalogue buyer name match | Warning callout: “This name matches a Discovery buyer not yet in your CRM. Saving creates a separate record.” |
 | Save failure (`createLeadWithCompany` / `updateLeadWithCompany` throws) | Page-level `alert alert-danger` from local `saveError` state; form retains dirty state; retry Save. **Do not** surface `syncError` on Lead Form. |
 
@@ -244,6 +244,35 @@ Baseline requirements; full checklist in Section 5.4.
 - Form sections use `fieldset` + `legend`.
 - Save button exposes `aria-busy` during submit.
 - Stub sections are informational only (not interactive); see Section 5.3.5.
+
+### 1.8 Duplicate lead confirmation dialog
+
+When the user clicks **Create Lead** or **Save Changes** and field validation passes, the form **checks for an existing lead** before calling `createLeadWithCompany` / `updateLeadWithCompany`:
+
+1. Resolve target `companyId` via `findCompanyByNormalizedName` (existing company) or the ID that would be reused on save.
+2. Run `findDuplicateLead(leads, companyId, medicineId, matchedMedicine)` — on edit, exclude the current `leadId`.
+3. If a match is found → open **`DuplicateLeadDialog`**; do **not** save until the user chooses an action.
+
+**Dialog copy (example):**
+
+> **Existing lead found**  
+> You already have a lead for **{companyName}** and **{matchedMedicine}**  
+> ({existingLead.title} · {existingLead.stage} · {existingLead.assignedTo}).  
+> Is this the same buyer, or do you want to create another lead?
+
+Show a compact summary card: company name, contact name (if any), stage, assignee.
+
+**Actions (footer button row — primary action first on mobile):**
+
+| Button | Style | Behaviour |
+|--------|-------|-----------|
+| **Edit existing lead** | `ti-btn ti-btn-primary` | Navigate to `/active-leads/{existingLeadId}` |
+| **Create duplicate anyway** | `ti-btn ti-btn-primary-outline` | Call create/update with `{ allowDuplicateLead: true }` |
+| **Cancel** | `ti-btn ti-btn-light` | Close dialog; remain on form with dirty state preserved |
+
+Full visual spec: Section 5.3.7.
+
+**Context safety net:** `createLeadWithCompany(input, { allowDuplicateLead?: boolean })` and `updateLeadWithCompany(..., { allowDuplicateLead?: boolean })` still run the duplicate check internally; throw `DuplicateLeadError` only when `allowDuplicateLead` is false (prevents bypass from other call sites).
 
 ---
 
@@ -378,6 +407,8 @@ type CreateLeadWithCompanyInput = {
 
 **Returns:** `{ companyId: string; contactId: string | null; leadId: string }`
 
+**Options:** `{ allowDuplicateLead?: boolean }` — default `false`. When `true`, skip step 3 duplicate check and create a second lead for the same company + medicine.
+
 **Algorithm (single `patch()`):**
 
 1. **Company dedupe:** `findCompanyByNormalizedName(prev.companies, input.company.name)`.
@@ -387,11 +418,11 @@ type CreateLeadWithCompanyInput = {
    - Dedupe: `contacts.find(c => c.companyId === company.id && c.email.toLowerCase() === email.toLowerCase())`.
    - If not found → create `generateCrmId("ct")`.
    - If no contact payload → `contactId = null`.
-3. **Lead duplicate check (blocking):**
+3. **Lead duplicate check (unless `allowDuplicateLead`):**
    - `findDuplicateLead(prev.leads, company.id, input.lead.medicineId, input.lead.matchedMedicine)`.
-   - If found → **throw** `DuplicateLeadError` with `existingLeadId`; form surfaces error callout and disables Save.
-   - Do **not** create a second lead.
-4. **Lead create** (when no duplicate):
+   - If found and `!allowDuplicateLead` → **throw** `DuplicateLeadError` with `existingLeadId` (safety net; form should have shown dialog first).
+   - If found and `allowDuplicateLead` → proceed and create a second lead.
+4. **Lead create:**
    - `title` = input or `{matchedMedicine} — {company.name}`
    - `stage` = input or `"Saved"`
    - `leadScore` = input or `50`
@@ -407,13 +438,13 @@ type CreateLeadWithCompanyInput = {
 
 ### 2.4 `updateLeadWithCompany`
 
-**Input:** `leadId: string`, `patch: Partial<CreateLeadWithCompanyInput flattened>`
+**Input:** `leadId: string`, `patch: Partial<CreateLeadWithCompanyInput flattened>`, `options?: { allowDuplicateLead?: boolean }`
 
 **Behaviour:** Single `patch()` that:
 
 - Updates company record referenced by `lead.companyId` when company fields present.
 - Updates or creates contact when contact fields present (same dedupe rule).
-- Re-runs duplicate check if `medicineId` or `matchedMedicine` changes (exclude current `leadId`).
+- Re-runs duplicate check if `medicineId` or `matchedMedicine` changes (exclude current `leadId`); respects `allowDuplicateLead`.
 - Updates lead fields; refreshes denormalized `companyName`, contact fields, `matchedSalt`/`matchedMedicine` when those sources change.
 - Updates `saltId`/`medicineId` when catalogue selection changes; validates pair.
 - Sets `lastActivity: todayIso()` on lead.
@@ -511,6 +542,7 @@ with that buyer’s `discoveryCompanyId`. Surface warning per Section 1.6; do no
 | `religance/shared/crm/active-leads/lead-form-sections/contacts-section.tsx` | Primary contact fields |
 | `religance/shared/crm/active-leads/lead-form-sections/stub-section.tsx` | Reusable stub for Follow-ups / Samples / Quotations |
 | `religance/shared/crm/active-leads/salt-medicine-fields.tsx` | Shared catalogue dropdowns + validation display |
+| `religance/shared/crm/active-leads/duplicate-lead-dialog.tsx` | Confirmation when duplicate company + medicine lead exists (§1.8) |
 | `religance/shared/crm/active-leads/lead-form-toast.tsx` | Success toast (`aria-live="polite"`) + page-level error banner component |
 | `religance/shared/crm/store/lead-form-utils.ts` | `normalizeCompanyName`, `normalizeMedicineName`, `findCompanyByNormalizedName`, `findDuplicateLead`, `validateSaltMedicinePair`, default builders, buyer fetch helper |
 
@@ -558,7 +590,7 @@ with that buyer’s `discoveryCompanyId`. Surface warning per Section 1.6; do no
 | Title empty | “Lead title is required.” | Yes |
 | Contact email present but malformed | “Enter a valid email address.” | Yes |
 | Contact name empty when email present | “Contact name is required when email is provided.” | Yes |
-| Duplicate lead (company + medicine) | “A lead for this company and medicine already exists.” + link | Yes |
+| Duplicate lead (company + medicine) | Opens **DuplicateLeadDialog** (§1.8) — does **not** block Save preemptively | No |
 
 ### 4.2 Duplicate handling
 
@@ -566,8 +598,10 @@ with that buyer’s `discoveryCompanyId`. Surface warning per Section 1.6; do no
 |----------|-----------|
 | Normalized company name matches existing CRM company | Reuse company; info callout |
 | Contact email matches existing contact on company | Reuse contact |
-| Lead exists for same `companyId` + `medicineId` | **Block save**; error callout with link to existing lead |
-| Lead exists for same `companyId` + `normalize(matchedMedicine)` (legacy rows without `medicineId`) | **Block save**; same error callout |
+| Lead exists for same `companyId` + `medicineId` | **Confirmation dialog** — Edit existing / Create duplicate / Cancel (§1.8) |
+| Lead exists for same `companyId` + `normalize(matchedMedicine)` (legacy rows without `medicineId`) | Same confirmation dialog |
+| User chooses **Create duplicate anyway** | Save proceeds with `allowDuplicateLead: true` |
+| User chooses **Edit existing lead** | Navigate to `/active-leads/{existingLeadId}` |
 | Typed name matches Excel catalogue buyer not in CRM | Warning callout; save allowed |
 
 ### 4.3 Loading and error states
@@ -588,14 +622,14 @@ with that buyer’s `discoveryCompanyId`. Surface warning per Section 1.6; do no
 | Q2 | Multi-salt pre-fill | Two salts checked, select medicine spanning both → New Lead URL includes correct `saltId`; form matches without reading `checkedSaltIds` |
 | Q3 | Catalogue override | Change medicine in form → salt dropdown re-filters; invalid pairs cannot save |
 | Q4 | Atomic create | Create with new company + contact + lead → all three + timeline event appear after **full page reload** |
-| Q5 | Duplicate lead block | Second lead same company + same medicine → Save disabled; error callout links existing lead |
+| Q5 | Duplicate lead dialog | Second lead same company + same medicine → dialog with Edit / Create duplicate / Cancel; duplicate path creates second lead |
 | Q6 | Company dedupe | Create “Cipla Ltd” twice with **different** medicines → one company, two leads |
 | Q7 | Contact dedupe | Same email on same company → one contact reused |
 | Q8 | Post-create UX | Redirect to `/active-leads/[id]`; toast mentions not in Discovery Results |
 | Q9 | Edit round-trip | Edit notes + company city on `/active-leads/[id]` → persists after reload (Mongo has city/gstin/pan/saltId/medicineId) |
 | Q10 | Entry point parity | Active Leads “New lead” and Discovery “New Lead” both land on same form page |
 | Q11 | `?lead=` compat | `/active-leads?lead={id}` opens quick-view drawer with correct lead; “Open full page” works |
-| Q12 | saveError on failure | Force `createLeadWithCompany` throw (e.g. duplicate) → `saveError` banner; form dirty; no `syncError` on page |
+| Q12 | saveError on failure | Force unexpected throw (e.g. bypass duplicate guard) → `saveError` banner; form dirty; no `syncError` on page |
 
 UI/UX visual gates in Section 5.6 (Q13–Q20).
 
@@ -619,8 +653,41 @@ UI/UX visual gates in Section 5.6 (Q13–Q20).
 
 ## Section 5 — UI/UX Requirements
 
-Binding visual and interaction requirements from the 2026-07-15 UI/UX adversarial review. All items
-are testable in implementation and QA.
+Binding visual and interaction requirements from the 2026-07-15 UI/UX adversarial review and
+**ui-ux-pro-max** checklist (accessibility, touch targets, forms & feedback, navigation, truncation).
+All items are testable in implementation and QA.
+
+**North star:** The Lead Form and Discovery entry must feel like **native Religance CRM** — same Ynex
+theme, spacing rhythm, and interaction patterns as Active Leads, Settings, and Save to Contact — not a
+foreign RPPL import. UX must be **clean, refined, and easy to use**: one obvious primary action per
+screen, labels always visible, errors explain how to fix, and no control that looks clickable but does
+nothing.
+
+### 5.0 UX design principles (binding)
+
+| Principle | Requirement | Reference surface |
+|-----------|-------------|-------------------|
+| **Theme consistency** | Reuse existing tokens only (`box custom-box`, `ti-btn`, `form-control`, CSS vars). No new color palette or button variants. | `active-leads-board.tsx`, `salts-settings-page.tsx`, `save-to-contact-modal.tsx` |
+| **One primary CTA** | Lead Form page: **Save** / **Create Lead** is the sole primary button in the sticky footer. Cancel is secondary (`ti-btn-light`). Discovery: **New Lead** is primary in Results header only. | ui-ux-pro-max `primary-action` |
+| **Progressive disclosure** | v1 shows three working sections (Lead Details, Contacts, pipeline fields) then clearly labelled Phase 2 stubs — do not dump RPPL phase-2 fields into v1. | ui-ux-pro-max `progressive-disclosure` |
+| **Visible labels** | Every input has a `form-label`; placeholders are hints only, never the label. Required fields marked with `*` in label text. | ui-ux-pro-max `input-labels`, `required-indicators` |
+| **Validate on blur** | Inline errors appear after field blur or submit attempt — not on every keystroke. | ui-ux-pro-max `inline-validation` |
+| **Intentional disabled states** | Save disabled only for validation, empty catalogue, pristine edit, or in-flight save — each with visible explanation (inline error, banner, or spinner). Never disable Cancel / New Lead / dialog Cancel. | ui-ux-pro-max `disabled-states`, `loading-buttons` |
+| **Confirmation, not dead ends** | Duplicate lead → dialog with clear choices (§1.8). Dirty navigation → confirm discard. | ui-ux-pro-max `confirmation-dialogs`, `escape-routes` |
+| **No truncation bugs** | Text wraps or truncates with `title` tooltip; flex children use `min-w-0`; buttons use `whitespace-nowrap shrink-0`. | §5.5, Lead Discovery pagination fixes |
+| **Touch-friendly** | All interactive targets ≥ **44px** height; ≥ **8px** gap between adjacent buttons. | ui-ux-pro-max `touch-target-size`, `touch-spacing` |
+| **Dark mode parity** | Every surface tested in light **and** dark — borders, muted text, alerts, modal scrim. | ui-ux-pro-max `color-dark-mode` |
+| **Calm motion** | Modal enter: fade + slight scale (150–250ms); respect `prefers-reduced-motion`. | ui-ux-pro-max `duration-timing`, `reduced-motion` |
+
+**Reference implementations to copy (do not reinvent):**
+
+| Pattern | Copy from |
+|---------|-----------|
+| Page header + primary button row | `active-leads-page-header` in `active-leads-board.tsx` + `globals.scss` |
+| Settings form sections (library + editor) | `salts-settings-page.tsx` / `medicines-settings-page.tsx` |
+| Modal overlay + card | `save-to-contact-modal.tsx` (`bg-black/50 z-[160]`, `box custom-box max-w-lg`) |
+| Info sub-groups inside a card | `active-leads-info-card` in Active Leads drawer |
+| Empty / coming-soon state | `EmptyPanel` in `lead-discovery-board.tsx` |
 
 ### 5.1 Theme scope (no generic white-card layout)
 
@@ -733,7 +800,6 @@ status line or overlap the title.
 | Disable reason | UI requirement |
 |----------------|----------------|
 | Validation errors | Save `disabled`; inline errors visible; **no** tooltip needed (errors explain) |
-| Duplicate lead | Save `disabled`; error callout with link to existing lead |
 | Catalogue empty | Save `disabled`; page-level `alert alert-warning` banner; banner text explains why |
 | Submit in flight | Save `disabled`; spinner icon inside button; `aria-busy="true"`; label becomes “Saving…” |
 | Pristine edit (no changes) | Save `disabled` on edit mode only; `title="No changes to save"` |
@@ -746,7 +812,7 @@ Never disable Cancel or New Lead entry buttons during loading.
 |-------|-----------|
 | Field-level (required, email format, salt↔medicine) | `text-[0.75rem] text-danger mt-1` directly under the field; `aria-invalid="true"` + `aria-describedby` pointing to error id |
 | Dedupe info / warning callouts | `alert` or bordered callout **above** the affected section body (company name area), not in footer |
-| Duplicate lead (blocking) | `alert alert-danger` above Lead Details product subsection; Save disabled |
+| Duplicate lead | **`DuplicateLeadDialog`** modal (§1.8) — not an inline blocking callout |
 | Save failure (`saveError`) | Top of `.lead-form-page__body` — `alert alert-danger`; form stays dirty |
 | First invalid on submit | Focus moves to first invalid field (WCAG focus-management) |
 
@@ -793,6 +859,64 @@ Stubs must read as **planned**, not **broken**. The **Follow-ups stub** is separ
 | Open full page | Primary text link + `ti-btn` in footer |
 | Data display | Read-only fields; same theme tokens as current drawer |
 
+#### 5.3.7 Duplicate lead dialog (`duplicate-lead-dialog.tsx`)
+
+Must match **`SaveToContactModal`** shell exactly — same scrim, z-index stack, card width, and header
+pattern so it feels native to Religance, not a one-off.
+
+**Structure:**
+
+```html
+<!-- scrim: fixed inset-0 bg-black/50 z-[160] -->
+<!-- dialog: role="dialog" z-[170] flex center p-4 -->
+<div class="box custom-box mb-0 w-full max-w-lg max-h-[90dvh] overflow-y-auto shadow-lg">
+  <div class="box-header …">
+    <h6 class="box-title">Existing lead found</h6>
+    <button aria-label="Close" class="ti-btn ti-btn-sm ti-btn-icon ti-btn-light">…</button>
+  </div>
+  <div class="box-body">
+    <!-- summary card: active-leads-info-card pattern -->
+    <!-- action list OR footer button row -->
+  </div>
+</div>
+```
+
+| Element | Requirement |
+|---------|-------------|
+| Summary card | `active-leads-info-card` with company, medicine, stage badge, assignee — text wraps (`whitespace-normal`), no clipped labels |
+| Body copy | `text-[0.8125rem] text-textmuted`; company/medicine names in `<strong>` |
+| Actions layout | **Desktop:** footer row `flex flex-wrap gap-2 justify-end`. **Mobile (`<576px`):** stack full-width buttons, primary action first |
+| **Edit existing lead** | `ti-btn ti-btn-primary` — **single primary** in dialog |
+| **Create duplicate anyway** | `ti-btn ti-btn-primary-outline` — visually subordinate; not red/destructive (duplicate is allowed, not deletion) |
+| **Cancel** | `ti-btn ti-btn-light` |
+| Button heights | All ≥ 2.75rem; full-width on mobile |
+| Close (X) | Same as SaveToContact; 44px hit area |
+| Scrim click | Closes dialog (= Cancel) |
+| Escape | Cancel |
+| Focus trap | Tab cycles within dialog; initial focus on **Edit existing lead** |
+| Navigate to edit | Optional `confirm()` if create form is dirty: “Discard unsaved changes?” |
+| Animation | `opacity` + `scale(0.98→1)` 200ms; `@media (prefers-reduced-motion: reduce)` → instant |
+| Icons | Remix icons only (`ri-user-line`, `ri-file-copy-line`) — no emoji |
+
+**Anti-patterns (reject in review):**
+
+- Disabled-looking dialog buttons without explanation
+- Horizontal scroll inside dialog on 320px width
+- Truncated company or medicine names without `title` tooltip
+- Generic browser `alert()` / `confirm()` for duplicate choice (use styled dialog only)
+
+#### 5.3.8 Lead Details field grouping (easy-to-scan layout)
+
+Inside **Lead Details** section, group fields into three visual sub-blocks using
+`active-leads-info-card` (or equivalent bordered `rounded-md p-3 mb-3` with theme borders):
+
+1. **Company** — name, type, city, country, GSTIN, PAN, location
+2. **Product** — salt + medicine dropdowns (`SaltMedicineFields`), dosage form (read-only from medicine)
+3. **Pipeline** — stage, assignee, follow-up date, score, notes
+
+Each sub-block has a small heading (`text-[0.6875rem] font-semibold uppercase text-textmuted mb-2`).
+This keeps the form scannable without adding RPPL white-card chrome.
+
 ### 5.4 Accessibility checklist
 
 | # | Requirement | Pass test |
@@ -828,11 +952,15 @@ Apply before merge; derived from Lead Discovery / Active Leads / settings pagina
 | Q13 | Dark mode parity | Lead Form readable in dark mode; borders/backgrounds match Active Leads list |
 | Q14 | Discovery header layout | New Lead visible; status line (“Live · N buyers…”) not truncated or overlapped at 375px and 1280px |
 | Q15 | Button touch targets | Save, Cancel, New Lead, Discovery New Lead, row chevron all ≥ 44px tall |
-| Q16 | Disabled Save clarity | Duplicate lead / empty catalogue / invalid pair → clear UI; in-flight → spinner + “Saving…” |
+| Q16 | Disabled Save clarity | Empty catalogue / invalid pair → clear UI; duplicate uses dialog not disabled Save; in-flight → spinner + “Saving…” |
 | Q17 | Stub sections | Samples/Quotations/Follow-ups show icon empty state; follow-up **date** field still works in Lead Details |
 | Q18 | Sticky footer | Save/Cancel always visible; no field hidden under footer when scrolled to end |
 | Q19 | Breadcrumb back | “Active Leads” link returns to list; dirty guard fires |
 | Q20 | Focus order | Logical tab order through sections; first invalid field focused on failed submit |
+| Q21 | Duplicate dialog polish | Dialog matches SaveToContact styling; all 3 actions ≥44px; no truncation at 320px; Escape closes |
+| Q22 | Theme consistency | Side-by-side with Active Leads list + Settings page — indistinguishable token usage (no orphan hex colors) |
+| Q23 | Easy scan | Lead Details shows Company / Product / Pipeline sub-groups; user finds salt field without scrolling past unrelated fields |
+| Q24 | No broken affordances | Every visible button and link performs an action or shows why it is disabled; stub sections have zero faux-disabled controls |
 
 ### 5.7 New / modified styles (`globals.scss`)
 
@@ -847,8 +975,22 @@ Add under a `/* Lead Form page */` comment — extend existing tokens only:
 | `.lead-form-callout` | Dedupe info/warning/error — bordered rounded box matching `active-leads-info-card` |
 | `.lead-discovery-results-status` | Status sub-line under Results title |
 | `.lead-form-stub-body` | Centers EmptyPanel content inside stub sections |
+| `.lead-form-subgroup` | Optional — bordered inner group for Company / Product / Pipeline blocks |
 
 Do **not** add RPPL-specific color variables or new button variants.
+
+### 5.8 Pre-delivery UI checklist (ui-ux-pro-max)
+
+Run before marking v1 complete:
+
+- [ ] Light + dark mode walkthrough on Lead Form create and edit
+- [ ] 375px and 1280px widths — no horizontal scroll, no clipped buttons
+- [ ] Tab through entire form + duplicate dialog — focus visible, logical order
+- [ ] Save disabled states each tested with visible reason
+- [ ] Duplicate dialog: all three actions work; scrim/Escape/Cancel equivalent
+- [ ] Discovery New Lead + Active Leads New lead buttons match sibling pages
+- [ ] Sticky footer never covers last input when scrolled to bottom
+- [ ] `prefers-reduced-motion: reduce` — modals still usable without animation
 
 ---
 
@@ -867,7 +1009,7 @@ Do **not** add RPPL-specific color variables or new button variants.
 | Synthetic `discoveryCompanyId`? | **No** in v1 (D10) |
 | Multi-contact companies? | **v1 single primary contact** on form; additional contacts via Contacts page later |
 | Backend company fields in v1? | **Yes** — P1; same release as frontend |
-| Duplicate lead behaviour? | **Block save** — P3 |
+| Duplicate lead behaviour? | **Confirmation dialog** — Edit existing / Create duplicate / Cancel (P3, §1.8) |
 | Row click vs drawer? | **Full page primary** — P4 |
 
 ---
@@ -877,10 +1019,10 @@ Do **not** add RPPL-specific color variables or new button variants.
 1. Backend schema: `crm-entities.ts` company + lead fields (P1, P2)
 2. Frontend schema types + `lead-form-utils.ts`
 3. `createLeadWithCompany` / `updateLeadWithCompany` in `crm-context.tsx`
-4. `SaltMedicineFields` + `lead-form-toast.tsx`
+4. `SaltMedicineFields` + `lead-form-toast.tsx` + `duplicate-lead-dialog.tsx`
 5. `LeadFormPage` + section components
 6. Routes `new/page.tsx`, `[id]/page.tsx`
 7. Wire Discovery + Active Leads entry points (row/chevron split, `saltId` in URL)
 8. Read-only drawer + deprecate `NewLeadModal`
 9. Styles + accessibility pass (Section 5)
-10. QA gates Q1–Q20
+10. QA gates Q1–Q24 + Section 5.8 pre-delivery checklist

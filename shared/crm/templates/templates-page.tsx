@@ -367,11 +367,6 @@ export default function TemplatesPage() {
                 Syncing...
               </span>
             )}
-            {!isSyncing && !syncError && (
-              <span className="badge bg-info/10 text-info whitespace-nowrap">
-                Done
-              </span>
-            )}
             {isDirty && (
               <span className="badge bg-warning/10 text-warning whitespace-nowrap">
                 Unsaved

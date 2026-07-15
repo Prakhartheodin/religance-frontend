@@ -32,7 +32,11 @@ export default function MedicinesTablePanel({
     () => new Map(salts.map((s) => [s.id, s.name])),
     [salts]
   );
-  const saltNameFor = (saltId: string) => saltNameById.get(saltId) ?? "—";
+  const saltNamesFor = (m: { saltIds: string[] }) =>
+    m.saltIds
+      .map((id) => saltNameById.get(id))
+      .filter(Boolean)
+      .join(", ") || "—";
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -49,7 +53,7 @@ export default function MedicinesTablePanel({
     const q = search.trim().toLowerCase();
     if (!q) return allMedicines;
     return allMedicines.filter((m) => {
-      const salt = saltNameFor(m.saltId).toLowerCase();
+      const salt = saltNamesFor(m).toLowerCase();
       return (
         m.name.toLowerCase().includes(q) ||
         salt.includes(q) ||
@@ -152,7 +156,7 @@ export default function MedicinesTablePanel({
           </div>
         ) : (
           <table className="table table-hover ti-custom-table w-full table-fixed mb-0 text-[0.8125rem]">
-            <thead className="ti-custom-table-head sticky top-0 z-[1]">
+            <thead className="ti-custom-table-head lead-discovery-col-header">
               <tr>
                 <th scope="col" className="!w-8 !px-1 !py-2">
                   <input
@@ -211,9 +215,9 @@ export default function MedicinesTablePanel({
                       {showSaltColumn && (
                         <td
                           className="!px-2 !py-1.5 text-textmuted min-w-0 max-w-0 truncate"
-                          title={saltNameFor(medicine.saltId)}
+                          title={saltNamesFor(medicine)}
                         >
-                          {saltNameFor(medicine.saltId)}
+                          {saltNamesFor(medicine)}
                         </td>
                       )}
                       <td
@@ -233,7 +237,7 @@ export default function MedicinesTablePanel({
 
       {checkedSaltIds.length > 0 && (
         <div className="box-footer !px-2.5 !py-2 border-t border-defaultborder dark:border-defaultborder/10 min-w-0 overflow-x-hidden">
-          <div className="lead-discovery-panel-footer grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 gap-y-0 min-h-[2rem]">
+          <div className="lead-discovery-panel-footer min-h-[2rem]">
             <div className="flex items-center gap-2 justify-start min-w-0">
               <label className="flex items-center gap-1 mb-0 whitespace-nowrap shrink-0">
                 <span className="text-[0.65rem] text-textmuted dark:text-textmuted/90 leading-none">
@@ -254,11 +258,8 @@ export default function MedicinesTablePanel({
               </label>
             </div>
 
-            <nav
-              aria-label="Medicines pagination"
-              className="justify-self-center shrink-0"
-            >
-              <ul className="ti-pagination pagination-sm mb-0 !py-0 flex-nowrap items-center gap-0">
+            <nav aria-label="Medicines pagination" className="shrink-0">
+              <ul className="ti-pagination pagination-sm mb-0 !py-0 flex-nowrap items-center">
                 <li className="!flex items-center">
                   <button
                     type="button"
@@ -296,7 +297,7 @@ export default function MedicinesTablePanel({
               </ul>
             </nav>
 
-            <span className="justify-self-end text-[0.65rem] text-textmuted dark:text-textmuted/90 whitespace-nowrap leading-none tabular-nums">
+            <span className="text-[0.65rem] text-textmuted dark:text-textmuted/90 whitespace-nowrap leading-none tabular-nums">
               {page}/{totalPages}
             </span>
           </div>

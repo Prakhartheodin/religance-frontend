@@ -16,13 +16,24 @@ export const DOSAGE_FORM_OPTIONS = [
   "Drops",
 ] as const;
 
+/**
+ * Coerce a medicine from any source into the saltIds[] shape. Pre-migration rows
+ * (and any un-restarted backend) still send a single `saltId`; a row with neither
+ * gets an empty array so the UI never reads `.map` of undefined.
+ */
+export function normalizeMedicine(m: DiscoveryMedicine): DiscoveryMedicine {
+  if (Array.isArray(m.saltIds)) return m;
+  const legacy = (m as { saltId?: string }).saltId;
+  return { ...m, saltIds: legacy ? [legacy] : [] };
+}
+
 export function createBlankMedicine(
   id: string,
   saltId: string
 ): DiscoveryMedicine {
   return {
     id,
-    saltId,
+    saltIds: [saltId],
     name: "Untitled medicine",
     dosageForm: "API",
   };

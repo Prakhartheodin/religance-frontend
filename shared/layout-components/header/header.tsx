@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import React, { Fragment, useEffect, useState } from 'react';
 import { ThemeChanger } from "../../redux/action";
+import { Dark, Light } from "@/shared/data/switcherdata/switcherdata";
 import { connect } from 'react-redux';
 import store from '@/shared/redux/store';
 import Modalsearch from '../modal-search/modalsearch';
@@ -26,6 +27,10 @@ const Header = ({ local_varaiable, ThemeChanger }:any) => {
   };
 
   const [passwordshow1, setpasswordshow1] = useState(false);
+
+  //Light / dark mode toggle
+  const isDark = local_varaiable.class === "dark";
+  const toggleTheme = () => (isDark ? Light : Dark)(ThemeChanger);
 
   //Notifications
 
@@ -212,7 +217,7 @@ const Header = ({ local_varaiable, ThemeChanger }:any) => {
       }
     }
     else {
-      if (theme.dataToggled === "close") {
+      if (theme.dataToggled !== "open") {
         ThemeChanger({ ...theme, "dataToggled": "open" });
 
         setTimeout(() => {
@@ -298,6 +303,17 @@ const Header = ({ local_varaiable, ThemeChanger }:any) => {
             </div>
             <div className="header-content-right">
 
+              <div className="header-element py-[1rem] md:px-[0.65rem] px-2">
+                <button
+                  aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                  title={isDark ? "Light mode" : "Dark mode"}
+                  type="button"
+                  onClick={toggleTheme}
+                  className="inline-flex flex-shrink-0 justify-center items-center gap-2 !rounded-full font-medium transition-all dark:hover:bg-black/20 dark:text-white/50 dark:hover:text-white"
+                >
+                  <i className={`bx ${isDark ? "bx-sun" : "bx-moon"} header-link-icon`}></i>
+                </button>
+              </div>
               <div className="header-element py-[1rem] md:px-[0.65rem] px-2 header-search">
                 <button aria-label="button" type="button" data-hs-overlay="#search-modal"
                   className="inline-flex flex-shrink-0 justify-center items-center gap-2  rounded-full font-medium focus:ring-offset-0 focus:ring-offset-white transition-all text-xs dark:bg-bgdark dark:hover:bg-black/20 dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white dark:focus:ring-white/10 dark:focus:ring-offset-white/10">

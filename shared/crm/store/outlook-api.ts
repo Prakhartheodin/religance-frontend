@@ -158,7 +158,8 @@ export async function disconnectOutlookAccount(
 export async function listOutlookThreads(
   accountId: string,
   pageSize = 20,
-  labelId?: string
+  labelId?: string,
+  pageToken?: string
 ): Promise<JsonResult<{ threads: OutlookThreadItem[]; nextPageToken: string | null }>> {
   const params = new URLSearchParams({
     accountId,
@@ -166,6 +167,9 @@ export async function listOutlookThreads(
   });
   if (labelId?.trim()) {
     params.set("labelId", labelId.trim());
+  }
+  if (pageToken?.trim()) {
+    params.set("pageToken", pageToken.trim());
   }
   const qs = params.toString();
   return getJson<{ threads: OutlookThreadItem[]; nextPageToken: string | null }>(
@@ -340,6 +344,48 @@ export async function listBackendMasterData(
 ): Promise<JsonResult<BackendMasterData>> {
   const query = reload ? "?reload=true" : "";
   return getJson<BackendMasterData>(`/v1/master-data${query}`);
+}
+
+export type BuyerImportResult = {
+  sourceFile: string;
+  buyers: number;
+  buyersNew: number;
+  salts: number;
+  medicines: number;
+};
+
+/**
+ * Upload one buyer-master workbook (the shape of the files in /Excel). The
+ * backend parses it into buyers + derived salts + medicines and upserts all
+ * three. Body is the raw file bytes; filename rides in the query string.
+ */
+export async function importBuyerExcel(
+  file: File
+): Promise<JsonResult<BuyerImportResult>> {
+  try {
+    const res = await fetchWithTimeout(
+      `${BACKEND_BASE}/v1/master-data/import?filename=${encodeURIComponent(
+        file.name
+      )}`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/octet-stream",
+        },
+        body: await file.arrayBuffer(),
+      }
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const message =
+        (body as { error?: string }).error ?? `Import failed (${res.status})`;
+      return { live: false, error: message };
+    }
+    return { live: true, data: (await res.json()) as BuyerImportResult };
+  } catch (err) {
+    return { live: false, error: normalizeFetchError(err) };
+  }
 }
 
 

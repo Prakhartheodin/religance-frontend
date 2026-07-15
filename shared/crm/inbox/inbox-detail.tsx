@@ -343,8 +343,10 @@ export function InboxDetailPanel({
                   title={`Download ${att.filename}`}
                 >
                   <i className={attachmentIcon(att.mimeType)}></i>
-                  <div>
-                    <p>{att.filename}</p>
+                  <div className="crm-inbox-attachment-meta">
+                    <p className="crm-inbox-attachment-name" title={att.filename}>
+                      {att.filename}
+                    </p>
                     <span>{formatAttachmentSize(att.size)}</span>
                   </div>
                 </button>

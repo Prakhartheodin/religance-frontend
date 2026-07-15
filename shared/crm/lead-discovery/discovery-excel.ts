@@ -57,7 +57,7 @@ export function getExcelBuyersForMedicine(
   return buyers
     .filter(
       (b) =>
-        b.saltId === medicine.saltId ||
+        medicine.saltIds.includes(b.saltId) ||
         b.medicineId === medicine.id ||
         b.productName.toLowerCase() === medicine.name.toLowerCase()
     )

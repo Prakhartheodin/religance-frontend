@@ -5,7 +5,7 @@ import { getUserDisplayName } from "@/shared/auth/auth-client";
 import type { CrmEmail, CrmEmailAttachment } from "@/shared/crm/store/types";
 import { downloadOutlookAttachment } from "@/shared/crm/store/outlook-api";
 import Seo from "@/shared/layout-components/seo/seo";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { InboxCompose } from "./inbox-compose";
 import { InboxContactsRail } from "./inbox-contacts-rail";
@@ -77,6 +77,11 @@ export default function InboxPage() {
     sendCrmEmail,
     emailTemplates,
     buildTemplateVars,
+    inboxFolderHasMore,
+    loadingMoreInboxFolder,
+    loadMoreInboxEmails,
+    outlookInboxSyncing,
+    outlookInboxLastSyncedAt,
   } = useCrm();
   const searchParams = useSearchParams();
 
@@ -350,13 +355,6 @@ export default function InboxPage() {
   }, [selectedId]);
 
   useEffect(() => {
-    if (!composeOpen || emailTemplates.length === 0) return;
-    if (!composeTemplateId) {
-      setComposeTemplateId(emailTemplates[0].id);
-    }
-  }, [composeOpen, composeTemplateId, emailTemplates]);
-
-  useEffect(() => {
     let active = true;
     const bootstrapInbox = async () => {
       try {
@@ -476,16 +474,31 @@ export default function InboxPage() {
       .replace(/[._-]+/g, " ")
       .trim()
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const domainPart = composeDraft.to.split("@")[1]?.split(".")[0] ?? "";
+    const companyFromDomain = domainPart
+      .replace(/[-_]+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
     return {
-      company_name: "",
       contact_name: contactName,
-      salt_name: "",
-      medicine_name: "",
-      dosage_form: "",
+      company_name: companyFromDomain,
       sender_name: activeMailbox?.name ?? getUserDisplayName(),
     };
-  }, [buildTemplateVars, composeDraft.to, leads]);
+  }, [activeMailbox?.name, buildTemplateVars, composeDraft.to, leads]);
+
+  const handleComposeToBlur = () => {
+    if (!composeTemplateId) return;
+    const template = emailTemplates.find((item) => item.id === composeTemplateId);
+    if (!template) return;
+
+    const vars = buildComposeTemplateVars();
+    setComposeDraft((prev) => ({
+      ...prev,
+      subject: applyTemplate(template.subject, vars),
+      body: applyTemplate(template.body, vars),
+    }));
+  };
 
   const handleComposeTemplateChange = (templateId: string) => {
     setComposeTemplateId(templateId);
@@ -500,6 +513,29 @@ export default function InboxPage() {
       body: applyTemplate(template.body, vars),
     }));
   };
+
+  const composeInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (!composeOpen) {
+      composeInitializedRef.current = false;
+      return;
+    }
+    if (composeInitializedRef.current || emailTemplates.length === 0) return;
+
+    const template = emailTemplates[0];
+    if (!template) return;
+
+    composeInitializedRef.current = true;
+    setComposeTemplateId(template.id);
+
+    const vars = buildComposeTemplateVars();
+    setComposeDraft((prev) => ({
+      ...prev,
+      subject: applyTemplate(template.subject, vars),
+      body: applyTemplate(template.body, vars),
+    }));
+  }, [buildComposeTemplateVars, composeOpen, emailTemplates]);
 
   const selectEmail = (id: string) => {
     setSelectedId(id);
@@ -716,6 +752,20 @@ export default function InboxPage() {
     [outlookAccountId, switchingAccountId, switchOutlookAccount]
   );
 
+  const showLoadMore =
+    gmailConnected &&
+    !searchQuery.trim() &&
+    !activeTag &&
+    inboxFolderHasMore(activeFolder);
+
+  const handleLoadMore = useCallback(() => {
+    void loadMoreInboxEmails(activeFolder);
+  }, [activeFolder, loadMoreInboxEmails]);
+
+  const handleRefreshInbox = useCallback(() => {
+    void syncOutlookInbox();
+  }, [syncOutlookInbox]);
+
   if (checkingConnection) {
     return (
       <Fragment>
@@ -880,6 +930,12 @@ export default function InboxPage() {
                 onToggleCheckAll={toggleCheckAll}
                 allChecked={allChecked}
                 loading={Boolean(switchingAccountId)}
+                hasMore={showLoadMore}
+                loadingMore={loadingMoreInboxFolder === activeFolder}
+                onLoadMore={handleLoadMore}
+                syncing={outlookInboxSyncing}
+                lastSyncedAt={outlookInboxLastSyncedAt}
+                onRefresh={handleRefreshInbox}
                 onBulkMarkRead={handleBulkMarkRead}
                 onBulkArchive={handleBulkArchive}
                 onBulkUnarchive={handleBulkUnarchive}
@@ -969,6 +1025,7 @@ export default function InboxPage() {
         }))}
         selectedTemplateId={composeTemplateId}
         onTemplateChange={handleComposeTemplateChange}
+        onToBlur={handleComposeToBlur}
         onDraftChange={(patch) =>
           setComposeDraft((prev) => ({ ...prev, ...patch }))
         }

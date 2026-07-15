@@ -3,19 +3,7 @@ import React, { useContext, useEffect } from 'react'
 import { connect } from 'react-redux';
 import { ThemeChanger } from '@/shared/redux/action';
 import { Initialload } from '@/shared/contextapi';
-import store from '@/shared/redux/store';
-
-const DARK_THEME = {
-  class: "dark",
-  dataHeaderStyles: "dark",
-  dataMenuStyles: "dark",
-  colorPrimary: "232 118 108",
-  colorPrimaryRgb: "232, 118, 108",
-  bodyBg: "",
-  darkBg: "",
-  inputBorder: "",
-  Light: "",
-} as const;
+import { Dark, Light } from '@/shared/data/switcherdata/switcherdata';
 
 function Layout({children, local_varaiable, ThemeChanger}:any) {
   const customstyles :any= {
@@ -33,16 +21,12 @@ function Layout({children, local_varaiable, ThemeChanger}:any) {
   useEffect(() => {
     if (typeof window === 'undefined' || theme.pageloading) return;
 
-    localStorage.removeItem('ynexlighttheme');
-    localStorage.removeItem('bodyBgRGB');
-    localStorage.removeItem('primaryRGB');
-    localStorage.removeItem('dynamiccolor');
-    localStorage.setItem('ynexdarktheme', 'dark');
-
-    ThemeChanger({
-      ...store.getState(),
-      ...DARK_THEME,
-    });
+    // Restore the user's saved preference; default to dark.
+    if (localStorage.getItem('ynexlighttheme') === 'light') {
+      Light(ThemeChanger);
+    } else {
+      Dark(ThemeChanger);
+    }
     theme.setpageloading(true);
   }, []);
 

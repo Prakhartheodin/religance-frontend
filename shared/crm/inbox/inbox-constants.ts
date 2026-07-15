@@ -18,6 +18,17 @@ export const INBOX_FOLDERS = [
 
 export type InboxFolderName = (typeof INBOX_FOLDERS)[number]["name"];
 
+/** Outlook folder label ids used by Graph listThreads. */
+export const INBOX_FOLDER_LABEL_IDS: Record<InboxFolderName, string> = {
+  Inbox: "INBOX",
+  Drafts: "DRAFT",
+  "Sent Items": "SENT",
+  "Deleted Items": "TRASH",
+  "Junk Email": "JUNK",
+  Archive: "ARCHIVE",
+  "Conversation History": "CONVERSATION_HISTORY",
+};
+
 export const INBOX_LABELS: {
   name: InboxTag;
   label: string;

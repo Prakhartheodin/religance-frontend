@@ -2,6 +2,7 @@
 
 import type { SaltMasterItem } from "@/shared/crm/store/salts-master";
 import { useCrm } from "@/shared/crm/store/crm-context";
+import ExcelMenu from "@/shared/crm/settings/excel-menu";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import {
@@ -57,7 +58,9 @@ export default function SaltsSettingsPage() {
   const medicineCountBySalt = useMemo(() => {
     const counts = new Map<string, number>();
     for (const m of medicines) {
-      counts.set(m.saltId, (counts.get(m.saltId) ?? 0) + 1);
+      for (const saltId of m.saltIds) {
+        counts.set(saltId, (counts.get(saltId) ?? 0) + 1);
+      }
     }
     return counts;
   }, [medicines]);
@@ -203,14 +206,17 @@ export default function SaltsSettingsPage() {
                   <h6 className="font-semibold text-[0.875rem] mb-0">
                     Salt library
                   </h6>
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-                    onClick={handleAdd}
-                  >
-                    <i className="ri-add-line me-1"></i>
-                    New salt
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <ExcelMenu />
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
+                      onClick={handleAdd}
+                    >
+                      <i className="ri-add-line me-1"></i>
+                      New salt
+                    </button>
+                  </div>
                 </div>
                 <div className="input-group input-group-sm">
                   <span className="input-group-text bg-light border-defaultborder dark:border-defaultborder/10">
@@ -417,7 +423,7 @@ export default function SaltsSettingsPage() {
                     </p>
                     <ul className="list-none mb-0 space-y-1">
                       {medicines.filter(
-                        (m) => m.saltId === draft.id
+                        (m) => m.saltIds.includes(draft.id)
                       ).map((med) => (
                         <li
                           key={med.id}

@@ -10,6 +10,17 @@ import {
   INBOX_TAG_LABELS,
 } from "./inbox-utils";
 
+function formatLastSynced(iso: string): string {
+  const syncedAt = new Date(iso).getTime();
+  if (Number.isNaN(syncedAt)) return "just now";
+  const minutes = Math.floor((Date.now() - syncedAt) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return formatInboxTime(iso);
+}
+
 export type InboxRowMeta = {
   from: string;
   peer: string;
@@ -35,6 +46,12 @@ export function InboxListPanel({
   onToggleCheckAll,
   allChecked,
   loading = false,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+  syncing = false,
+  lastSyncedAt = null,
+  onRefresh,
   onBulkMarkRead,
   onBulkArchive,
   onBulkUnarchive,
@@ -56,6 +73,12 @@ export function InboxListPanel({
   onToggleCheck: (id: string) => void;
   onToggleCheckAll: () => void;
   allChecked: boolean;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  syncing?: boolean;
+  lastSyncedAt?: string | null;
+  onRefresh?: () => void;
   onBulkMarkRead?: () => void;
   onBulkArchive?: () => void;
   onBulkUnarchive?: () => void;
@@ -121,6 +144,32 @@ export function InboxListPanel({
             aria-label="Select all"
           />
           <h2 className="crm-inbox-list-folder-title">{activeFolder}</h2>
+          {gmailConnected && (syncing || lastSyncedAt || onRefresh) ? (
+            <div className="crm-inbox-list-sync-meta">
+              {syncing ? (
+                <span className="crm-inbox-sync-status" aria-live="polite">
+                  <i className="ri-loader-4-line animate-spin" aria-hidden />
+                  Syncing…
+                </span>
+              ) : lastSyncedAt ? (
+                <span className="crm-inbox-sync-status" aria-live="polite">
+                  Updated {formatLastSynced(lastSyncedAt)}
+                </span>
+              ) : null}
+              {onRefresh ? (
+                <button
+                  type="button"
+                  className="crm-inbox-refresh-btn"
+                  onClick={onRefresh}
+                  disabled={syncing}
+                  aria-label="Refresh inbox"
+                  title="Refresh inbox"
+                >
+                  <i className={`ri-refresh-line ${syncing ? "animate-spin" : ""}`} />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <InboxOverflowMenu
           items={
@@ -170,62 +219,92 @@ export function InboxListPanel({
             description="Try another folder or label."
           />
         ) : (
-          emails.map((email) => {
-            const meta = rowMeta(email);
-            const selected = selectedId === email.id;
-            const starred = starredIds.includes(email.id);
-            const checked = checkedIds.includes(email.id);
-            const tagLabel = INBOX_TAG_LABELS[meta.tag];
-            return (
-              <article
-                key={email.id}
-                className={`crm-inbox-list-item ${selected ? "is-selected" : ""} ${!meta.read ? "is-unread" : ""}`}
-              >
-                <input
-                  type="checkbox"
-                  className="form-check-input crm-inbox-check crm-inbox-row-check"
-                  checked={checked}
-                  onChange={() => onToggleCheck(email.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`Select ${email.subject}`}
-                />
-                <button
-                  type="button"
-                  className="crm-inbox-list-item-main"
-                  onClick={() => onSelect(email.id)}
+          <>
+            {emails.map((email) => {
+              const meta = rowMeta(email);
+              const selected = selectedId === email.id;
+              const starred = starredIds.includes(email.id);
+              const checked = checkedIds.includes(email.id);
+              const tagLabel = INBOX_TAG_LABELS[meta.tag];
+              return (
+                <article
+                  key={email.id}
+                  className={`crm-inbox-list-item ${selected ? "is-selected" : ""} ${!meta.read ? "is-unread" : ""}`}
                 >
-                  <InboxAvatar name={meta.from} size="md" />
-                  <div className="crm-inbox-list-item-body">
-                    <div className="crm-inbox-list-item-row">
-                      <div className="crm-inbox-list-sender-wrap">
-                        <span className="crm-inbox-list-sender">{meta.from}</span>
-                        <span
-                          className={`crm-inbox-list-tag ${INBOX_LIST_TAG_CLASS[meta.tag]}`}
-                        >
-                          {tagLabel}
-                        </span>
-                      </div>
-                      <span className="crm-inbox-list-time">
-                        {formatInboxTime(email.sentAt)}
-                      </span>
-                    </div>
-                    <p className="crm-inbox-list-subject">{email.subject}</p>
-                    <p className="crm-inbox-list-preview">{email.preview}</p>
-                  </div>
-                </button>
-                <div className="crm-inbox-list-item-end">
+                  <input
+                    type="checkbox"
+                    className="form-check-input crm-inbox-check crm-inbox-row-check"
+                    checked={checked}
+                    onChange={() => onToggleCheck(email.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Select ${email.subject}`}
+                  />
                   <button
                     type="button"
-                    className={`crm-inbox-star-btn ${starred ? "is-starred" : ""}`}
-                    onClick={(e) => onToggleStar(email.id, e)}
-                    aria-label={starred ? "Unstar" : "Star"}
+                    className="crm-inbox-list-item-main"
+                    onClick={() => onSelect(email.id)}
                   >
-                    <i className={starred ? "ri-star-fill" : "ri-star-line"}></i>
+                    <InboxAvatar name={meta.from} size="md" />
+                    <div className="crm-inbox-list-item-body">
+                      <div className="crm-inbox-list-item-row">
+                        <div className="crm-inbox-list-sender-wrap">
+                          <span className="crm-inbox-list-sender">{meta.from}</span>
+                          <span
+                            className={`crm-inbox-list-tag ${INBOX_LIST_TAG_CLASS[meta.tag]}`}
+                          >
+                            {tagLabel}
+                          </span>
+                        </div>
+                        <span className="crm-inbox-list-time">
+                          {formatInboxTime(email.sentAt)}
+                        </span>
+                      </div>
+                      <p className="crm-inbox-list-subject">{email.subject}</p>
+                      <p className="crm-inbox-list-preview">{email.preview}</p>
+                    </div>
                   </button>
-                </div>
-              </article>
-            );
-          })
+                  <div className="crm-inbox-list-item-end">
+                    <button
+                      type="button"
+                      className={`crm-inbox-star-btn ${starred ? "is-starred" : ""}`}
+                      onClick={(e) => onToggleStar(email.id, e)}
+                      aria-label={starred ? "Unstar" : "Star"}
+                    >
+                      <i className={starred ? "ri-star-fill" : "ri-star-line"}></i>
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+            {hasMore && onLoadMore ? (
+              <div className="crm-inbox-load-more">
+                <p className="crm-inbox-load-more-count">
+                  Showing {emails.length}{" "}
+                  {emails.length === 1 ? "message" : "messages"}
+                </p>
+                <button
+                  type="button"
+                  className="crm-inbox-load-more-btn"
+                  onClick={onLoadMore}
+                  disabled={loadingMore}
+                  aria-busy={loadingMore}
+                  aria-label="Load older messages"
+                >
+                  {loadingMore ? (
+                    <>
+                      <span
+                        className="spinner-border spinner-border-sm"
+                        aria-hidden
+                      />
+                      Loading older messages…
+                    </>
+                  ) : (
+                    "Load older messages"
+                  )}
+                </button>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </section>
