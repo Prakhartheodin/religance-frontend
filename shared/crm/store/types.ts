@@ -28,6 +28,10 @@ export type CrmCompany = {
   website: string;
   companyType: string;
   certification: string;
+  city?: string;
+  country?: string;
+  gstin?: string;
+  pan?: string;
   discoveryCompanyId?: string;
   sourceLinks: { label: string; url: string }[];
   createdAt: string;
@@ -55,6 +59,8 @@ export type CrmLead = {
   contactEmail: string;
   matchedSalt: string;
   matchedMedicine: string;
+  saltId?: string;
+  medicineId?: string;
   dosageForm: string;
   location: string;
   stage: LeadStage;
@@ -164,3 +170,37 @@ export type CrmState = {
 export const DEFAULT_ASSIGNEES = ["Priya Sharma", "Arjun Nair"] as const;
 
 export const CURRENT_USER = DEFAULT_ASSIGNEES[0];
+
+export type CreateLeadWithCompanyInput = {
+  company: {
+    name: string;
+    companyType?: string;
+    city?: string;
+    country?: string;
+    gstin?: string;
+    pan?: string;
+    location?: string;
+    website?: string;
+    certification?: string;
+  };
+  contact?: {
+    name: string;
+    role?: string;
+    email?: string;
+    phone?: string;
+  } | null;
+  lead: {
+    saltId: string;
+    medicineId: string;
+    matchedSalt: string;
+    matchedMedicine: string;
+    dosageForm: string;
+    title?: string;
+    stage?: LeadStage;
+    assignedTo?: string;
+    leadScore?: number;
+    followUpDate?: string;
+    notes?: string;
+    location?: string;
+  };
+};
