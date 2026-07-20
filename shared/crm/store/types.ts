@@ -61,16 +61,116 @@ export type CrmLead = {
   matchedMedicine: string;
   saltId?: string;
   medicineId?: string;
+  /** Multi-select products of interest (medicine catalogue ids). */
+  medicineIds?: string[];
   dosageForm: string;
   location: string;
   stage: LeadStage;
+  /** Discovery-derived score; not the RPPL qual. score. */
   leadScore: number;
   assignedTo: string;
+  marketTier?: string;
+  segment?: string;
+  leadSource?: string;
+  priority?: string;
+  /** RPPL qualification score (0–25). */
+  qualScore?: number;
+  potentialQty?: string;
+  estAnnualValue?: string;
+  lastContactDate?: string;
   followUpDate: string;
+  nextAction?: string;
+  docsShared?: string;
+  lastDiscussionSummary?: string;
   lastActivity: string;
   notes: string;
   createdAt: string;
   sourceLinks: { label: string; url: string }[];
+};
+
+export const SAMPLE_STATUSES = [
+  "Requested",
+  "Dispatched",
+  "In transit",
+  "Delivered",
+  "Feedback received",
+  "Cancelled",
+] as const;
+
+export type SampleStatus = (typeof SAMPLE_STATUSES)[number];
+
+export type CrmSample = {
+  id: string;
+  leadId: string;
+  companyId: string;
+  /** Snapshot for register display, mirrors how leads carry companyName. */
+  companyName: string;
+  productId: string;
+  /** Product name snapshot (medicine names can be renamed later). */
+  product: string;
+  qty: string;
+  batchNo: string;
+  status: string;
+  /** YYYY-MM-DD, or "" if not dispatched yet. */
+  dispatchDate: string;
+  courier: string;
+  awb: string;
+  coaSent: boolean;
+  feedback: string;
+  /** Inherited from the lead's assignedTo. */
+  owner: string;
+  createdAt: string;
+};
+
+export const QUOTATION_STATUSES = [
+  "Draft",
+  "Sent",
+  "Accepted",
+  "Rejected",
+  "Expired",
+] as const;
+
+export type QuotationStatus = (typeof QUOTATION_STATUSES)[number];
+
+export const QUOTATION_CURRENCIES = ["INR", "USD", "EUR"] as const;
+
+export const QUOTATION_GST_RATES = ["", "0%", "5%", "12%", "18%", "28%"] as const;
+
+export const QUOTATION_PRICE_BASES = [
+  "",
+  "Ex-works",
+  "FOB",
+  "CIF",
+  "DDP",
+] as const;
+
+export type CrmQuotation = {
+  id: string;
+  leadId: string;
+  companyId: string;
+  companyName: string;
+  owner: string;
+  quoteNo: string;
+  /** YYYY-MM-DD */
+  quoteDate: string;
+  productId: string;
+  product: string;
+  casNo: string;
+  hsnSac: string;
+  /** Quantity in kg (stored as string, e.g. "100"). */
+  qty: string;
+  unitPrice: string;
+  currency: string;
+  gstRate: string;
+  priceBasis: string;
+  /** YYYY-MM-DD, or "" if open-ended. */
+  validUntil: string;
+  status: string;
+  note: string;
+  subTotal: number;
+  gstAmount: number;
+  grandTotal: number;
+  createdAt: string;
 };
 
 export type CrmDeal = {
@@ -154,6 +254,8 @@ export type CrmState = {
   contacts: CrmContact[];
   leads: CrmLead[];
   deals: CrmDeal[];
+  samples: CrmSample[];
+  quotations: CrmQuotation[];
   emails: CrmEmail[];
   /** Persisted overlay for `emails` (which are re-fetched from Graph, not stored). */
   emailMeta: CrmEmailMeta[];
@@ -203,11 +305,23 @@ export type CreateLeadWithCompanyInput = {
     matchedSalt: string;
     matchedMedicine: string;
     dosageForm: string;
+    medicineIds?: string[];
     title?: string;
     stage?: LeadStage;
     assignedTo?: string;
     leadScore?: number;
+    marketTier?: string;
+    segment?: string;
+    leadSource?: string;
+    priority?: string;
+    qualScore?: number;
+    potentialQty?: string;
+    estAnnualValue?: string;
+    lastContactDate?: string;
     followUpDate?: string;
+    nextAction?: string;
+    docsShared?: string;
+    lastDiscussionSummary?: string;
     notes?: string;
     location?: string;
   };

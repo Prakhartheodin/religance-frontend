@@ -2,6 +2,7 @@
 
 import {
   getCompaniesForCheckedMedicines,
+  getCompaniesFromLeads,
   getMedicinesForCheckedSalts,
   type DiscoveryMedicine,
 } from "@/shared/crm/lead-discovery/discovery-catalog";
@@ -22,14 +23,71 @@ import {
   collectFilterOptions,
   filterDiscoveredCompanies,
   hasActiveFilters,
+  sortDiscoveredCompanies,
+  type ResultsSortColumn,
+  type ResultsSortDirection,
 } from "@/shared/crm/lead-discovery/utils";
 import { useCrm } from "@/shared/crm/store/crm-context";
 import { leadNewHref } from "@/shared/crm/active-leads/active-leads-utils";
 import { resolvePrefillSaltId } from "@/shared/crm/store/lead-form-utils";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const PANEL_SCROLL_MAX = "calc(100vh - 11rem)";
+
+function SortableColumnHeader({
+  column,
+  label,
+  align = "start",
+  sortColumn,
+  sortDirection,
+  onSort,
+}: {
+  column: ResultsSortColumn;
+  label: string;
+  align?: "start" | "end";
+  sortColumn: ResultsSortColumn | null;
+  sortDirection: ResultsSortDirection | null;
+  onSort: (column: ResultsSortColumn) => void;
+}) {
+  const isActive = sortColumn === column && sortDirection !== null;
+  const ariaSort =
+    isActive && sortDirection === "asc"
+      ? "ascending"
+      : isActive && sortDirection === "desc"
+        ? "descending"
+        : "none";
+  const iconClass =
+    isActive && sortDirection === "asc"
+      ? "ri-arrow-up-s-line"
+      : isActive && sortDirection === "desc"
+        ? "ri-arrow-down-s-line"
+        : "ri-arrow-up-down-line";
+
+  return (
+    <th
+      scope="col"
+      aria-sort={ariaSort}
+      className={align === "end" ? "!text-end" : "!text-start"}
+    >
+      <button
+        type="button"
+        className={`lead-discovery-sort-header${
+          isActive ? " lead-discovery-sort-header--active" : ""
+        }${align === "end" ? " lead-discovery-sort-header--end" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSort(column);
+        }}
+      >
+        <span className="lead-discovery-sort-label">{label}</span>
+        <span className="lead-discovery-sort-icon" aria-hidden="true">
+          <i className={iconClass}></i>
+        </span>
+      </button>
+    </th>
+  );
+}
 
 function EmptyPanel({
   icon,
@@ -52,9 +110,12 @@ function EmptyPanel({
 
 export default function LeadDiscoveryBoard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     salts,
     medicines: allMedicines,
+    leads,
+    companies,
     masterDataSynced,
     masterDataRevision,
     refreshMasterData,
@@ -70,6 +131,10 @@ export default function LeadDiscoveryBoard() {
   );
   const [profileCompany, setProfileCompany] =
     useState<DiscoveredCompany | null>(null);
+  const [sortColumn, setSortColumn] = useState<ResultsSortColumn | null>(null);
+  const [sortDirection, setSortDirection] =
+    useState<ResultsSortDirection | null>(null);
+  const [urlSelectionApplied, setUrlSelectionApplied] = useState(false);
 
   const medicines = useMemo(
     () => getMedicinesForCheckedSalts(checkedSaltIds, allMedicines),
@@ -112,6 +177,29 @@ export default function LeadDiscoveryBoard() {
     void loadBuyers();
   }, [loadBuyers, masterDataRevision]);
 
+  useEffect(() => {
+    if (urlSelectionApplied || !masterDataSynced) return;
+    const urlSaltId = searchParams.get("saltId");
+    const urlMedicineId = searchParams.get("medicineId");
+    if (!urlSaltId && !urlMedicineId) {
+      setUrlSelectionApplied(true);
+      return;
+    }
+    if (urlSaltId && salts.some((s) => s.id === urlSaltId)) {
+      setCheckedSaltIds([urlSaltId]);
+    }
+    if (urlMedicineId && allMedicines.some((m) => m.id === urlMedicineId)) {
+      setActiveMedicineId(urlMedicineId);
+    }
+    setUrlSelectionApplied(true);
+  }, [
+    urlSelectionApplied,
+    masterDataSynced,
+    searchParams,
+    salts,
+    allMedicines,
+  ]);
+
   /** Keep medicine selection in sync when salts or catalogue medicines change. */
   useEffect(() => {
     if (!checkedSaltIds.length) {
@@ -135,20 +223,32 @@ export default function LeadDiscoveryBoard() {
   }, [checkedSaltIds, allMedicines]);
 
   const catalogueCompanies = useMemo(
-    () =>
-      getCompaniesForCheckedMedicines(
+    () => {
+      const catalogue = getCompaniesForCheckedMedicines(
         checkedSaltIds,
         checkedMedicineIds,
         allMedicines,
         salts,
         catalogueBuyers
-      ),
+      );
+      // Merge in the user's own created leads. Lead rows override the catalogue
+      // row with the same id so a saved lead surfaces instead of the raw buyer.
+      const leadRows = getCompaniesFromLeads(checkedMedicineIds, leads, companies);
+      const leadIds = new Set(leadRows.map((r) => r.id));
+      const merged = [
+        ...leadRows,
+        ...catalogue.filter((c) => !leadIds.has(c.id)),
+      ];
+      return merged.sort((a, b) => b.leadScore - a.leadScore);
+    },
     [
       checkedSaltIds,
       checkedMedicineIds,
       allMedicines,
       salts,
       catalogueBuyers,
+      leads,
+      companies,
     ]
   );
 
@@ -161,6 +261,31 @@ export default function LeadDiscoveryBoard() {
     () => filterDiscoveredCompanies(catalogueCompanies, resultFilters),
     [catalogueCompanies, resultFilters]
   );
+
+  const displayCompanies = useMemo(() => {
+    if (!sortColumn || !sortDirection) {
+      return filteredCompanies;
+    }
+    return sortDiscoveredCompanies(
+      filteredCompanies,
+      sortColumn,
+      sortDirection
+    );
+  }, [filteredCompanies, sortColumn, sortDirection]);
+
+  const handleSortColumn = useCallback((column: ResultsSortColumn) => {
+    if (sortColumn !== column) {
+      setSortColumn(column);
+      setSortDirection("asc");
+      return;
+    }
+    if (sortDirection === "asc") {
+      setSortDirection("desc");
+      return;
+    }
+    setSortColumn(null);
+    setSortDirection(null);
+  }, [sortColumn, sortDirection]);
 
   const handleMedicineSelectionChange = () => {
     setProfileCompany(null);
@@ -181,12 +306,13 @@ export default function LeadDiscoveryBoard() {
 
   const handleNewLead = () => {
     if (!activeMedicine) {
-      router.push(leadNewHref());
+      router.push(leadNewHref({ from: "discovery" }));
       return;
     }
     const saltId = resolvePrefillSaltId(activeSaltId, activeMedicine);
     router.push(
       leadNewHref({
+        from: "discovery",
         medicineId: activeMedicine.id,
         saltId: saltId || null,
       })
@@ -274,7 +400,7 @@ export default function LeadDiscoveryBoard() {
             {!noSaltSelected && !noMedicineSelected && catalogueCompanies.length > 0 && (
               <div className="border-b border-defaultborder dark:border-defaultborder/10 px-3 py-2.5">
                 <div className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-12 md:col-span-4">
+                  <div className="col-span-12 md:col-span-3">
                     <label
                       className="form-label text-[0.7rem] mb-1"
                       htmlFor="discovery-search"
@@ -347,12 +473,13 @@ export default function LeadDiscoveryBoard() {
                       ))}
                     </select>
                   </div>
-                  <div className="col-span-12 md:col-span-2 flex gap-2">
+                  <div className="col-span-12 md:col-span-3 flex items-end">
                     <button
                       type="button"
-                      className="ti-btn ti-btn-light ti-btn-sm !min-h-[2.5rem] w-full"
+                      className="ti-btn ti-btn-sm ti-btn-light !min-h-[2.75rem] whitespace-nowrap inline-flex items-center justify-center !px-5 !font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                       disabled={!filtersActive}
                       onClick={clearResultFilters}
+                      aria-label="Clear filters"
                     >
                       Clear
                     </button>
@@ -401,22 +528,39 @@ export default function LeadDiscoveryBoard() {
                     <table className="table table-hover ti-custom-table mb-0 w-full">
                       <thead className="ti-custom-table-head lead-discovery-col-header">
                         <tr>
-                          <th scope="col" className="!text-start">
-                            Company
-                          </th>
-                          <th scope="col" className="!text-start">
-                            Type
-                          </th>
-                          <th scope="col" className="!text-start">
-                            Location
-                          </th>
-                          <th scope="col" className="!text-end">
-                            Score
-                          </th>
+                          <SortableColumnHeader
+                            column="company"
+                            label="Company"
+                            sortColumn={sortColumn}
+                            sortDirection={sortDirection}
+                            onSort={handleSortColumn}
+                          />
+                          <SortableColumnHeader
+                            column="type"
+                            label="Type"
+                            sortColumn={sortColumn}
+                            sortDirection={sortDirection}
+                            onSort={handleSortColumn}
+                          />
+                          <SortableColumnHeader
+                            column="location"
+                            label="Location"
+                            sortColumn={sortColumn}
+                            sortDirection={sortDirection}
+                            onSort={handleSortColumn}
+                          />
+                          <SortableColumnHeader
+                            column="score"
+                            label="Score"
+                            align="end"
+                            sortColumn={sortColumn}
+                            sortDirection={sortDirection}
+                            onSort={handleSortColumn}
+                          />
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredCompanies.map((company: DiscoveredCompany) => {
+                        {displayCompanies.map((company: DiscoveredCompany) => {
                           const isSelected =
                             profileCompany?.id === company.id;
                           return (
@@ -433,6 +577,11 @@ export default function LeadDiscoveryBoard() {
                                 >
                                   {company.companyName}
                                 </button>
+                                {company.sourceProof === "Created lead" && (
+                                  <span className="badge bg-primary/10 text-primary text-[0.65rem] ms-2 align-middle whitespace-nowrap">
+                                    Created lead
+                                  </span>
+                                )}
                                 <div
                                   className="text-[0.75rem] text-textmuted dark:text-textmuted/90 truncate"
                                   title={formatBuyerSubtitle(company)}

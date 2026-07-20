@@ -13,6 +13,7 @@ import { FollowUpDateCell } from "@/shared/crm/active-leads/follow-up-date-cell"
 import LeadStageBadge from "@/shared/crm/active-leads/lead-stage-badge";
 import { SendEmailModal } from "@/shared/crm/send-email/send-email-modal";
 import { useCrm } from "@/shared/crm/store/crm-context";
+import { ConfirmDeleteOverlay } from "@/shared/crm/ui/confirm-delete-overlay";
 import {
   isTerminalStage,
   LEAD_STAGES,
@@ -63,8 +64,37 @@ const PIPELINE_TABS = [
 export default function ActiveLeadsBoard() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { leads, hydrated, pendingComposeLeadId, setPendingComposeLeadId } =
-    useCrm();
+  const {
+    leads,
+    samples,
+    quotations,
+    contacts,
+    hydrated,
+    pendingComposeLeadId,
+    setPendingComposeLeadId,
+    deleteLead,
+  } = useCrm();
+  const [pendingDelete, setPendingDelete] = useState<CrmLead | null>(null);
+  const [delSamples, setDelSamples] = useState(true);
+  const [delQuotations, setDelQuotations] = useState(true);
+  const [delContact, setDelContact] = useState(false);
+
+  const linkedSamples = pendingDelete
+    ? samples.filter((s) => s.leadId === pendingDelete.id)
+    : [];
+  const linkedQuotations = pendingDelete
+    ? quotations.filter((q) => q.leadId === pendingDelete.id)
+    : [];
+  const linkedContact = pendingDelete?.contactId
+    ? contacts.find((c) => c.id === pendingDelete.contactId) ?? null
+    : null;
+
+  const askDelete = (lead: CrmLead) => {
+    setDelSamples(true);
+    setDelQuotations(true);
+    setDelContact(false);
+    setPendingDelete(lead);
+  };
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<LeadStage | "">("");
   const [saltFilter, setSaltFilter] = useState("");
@@ -198,7 +228,7 @@ export default function ActiveLeadsBoard() {
   const openLeadDrawer = (lead: CrmLead) => setSelectedLead(lead);
 
   const openLeadForm = (lead: CrmLead) => {
-    router.push(leadEditHref(lead.id));
+    router.push(leadEditHref(lead.id, { from: "active-leads" }));
   };
 
   if (!hydrated) {
@@ -224,7 +254,7 @@ export default function ActiveLeadsBoard() {
         <button
           type="button"
           className="ti-btn ti-btn-primary shrink-0 inline-flex items-center justify-center gap-1 whitespace-nowrap !w-auto !h-auto !py-2 !px-3 !text-[0.8125rem]"
-          onClick={() => router.push(leadNewHref())}
+          onClick={() => router.push(leadNewHref({ from: "active-leads" }))}
         >
           <i className="ri-add-line me-1"></i>
           New lead
@@ -431,15 +461,7 @@ export default function ActiveLeadsBoard() {
                   return (
                     <tr
                       key={lead.id}
-                      className={`active-leads-row cursor-pointer ${isSelected ? "is-selected" : ""}`}
-                      onClick={() => openLeadForm(lead)}
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          openLeadForm(lead);
-                        }
-                      }}
+                      className={`active-leads-row ${isSelected ? "is-selected" : ""}`}
                     >
                       <td className="!ps-3">
                         <span
@@ -449,7 +471,19 @@ export default function ActiveLeadsBoard() {
                           {companyInitials(lead.companyName)}
                         </span>
                       </td>
-                      <td>
+                      <td
+                        className="cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Quick view ${lead.title}`}
+                        onClick={() => openLeadDrawer(lead)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openLeadDrawer(lead);
+                          }
+                        }}
+                      >
                         <div className="font-semibold text-defaulttextcolor leading-snug mb-0.5 max-w-[240px] truncate">
                           {lead.title}
                         </div>
@@ -494,14 +528,34 @@ export default function ActiveLeadsBoard() {
                         <FollowUpDateCell followUpDate={lead.followUpDate} />
                       </td>
                       <td className="!pe-3 text-end" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="ti-btn ti-btn-sm ti-btn-icon ti-btn-light active-leads-row-chevron-btn"
-                          aria-label="Quick view"
-                          onClick={() => openLeadDrawer(lead)}
-                        >
-                          <i className="ri-arrow-right-s-line text-lg text-textmuted active-leads-row-chevron"></i>
-                        </button>
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-sm ti-btn-icon ti-btn-light"
+                            aria-label={`Edit ${lead.title}`}
+                            title="Edit lead"
+                            onClick={() => openLeadForm(lead)}
+                          >
+                            <i className="ri-edit-line"></i>
+                          </button>
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-sm ti-btn-icon ti-btn-light text-danger"
+                            aria-label={`Delete ${lead.title}`}
+                            title="Delete lead"
+                            onClick={() => askDelete(lead)}
+                          >
+                            <i className="ri-delete-bin-line"></i>
+                          </button>
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-sm ti-btn-icon ti-btn-light active-leads-row-chevron-btn"
+                            aria-label="Quick view"
+                            onClick={() => openLeadDrawer(lead)}
+                          >
+                            <i className="ri-arrow-right-s-line text-lg text-textmuted active-leads-row-chevron"></i>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -593,6 +647,79 @@ export default function ActiveLeadsBoard() {
         lead={sendLead}
         onClose={() => setSendLead(null)}
       />
+
+      <ConfirmDeleteOverlay
+        open={pendingDelete !== null}
+        title="Delete lead?"
+        entityName={pendingDelete?.title ?? ""}
+        description="This action cannot be undone. Deals tied to this lead are removed with it."
+        onConfirm={() => {
+          if (pendingDelete) {
+            deleteLead(pendingDelete.id, {
+              samples: linkedSamples.length > 0 && delSamples,
+              quotations: linkedQuotations.length > 0 && delQuotations,
+              contact: linkedContact !== null && delContact,
+            });
+          }
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
+      >
+        {(linkedSamples.length > 0 || linkedQuotations.length > 0 || linkedContact) && (
+          <div className="text-start w-full space-y-2">
+            <p className="text-[0.75rem] text-textmuted mb-1">
+              This lead also has connected records — choose what to remove:
+            </p>
+            {linkedSamples.length > 0 && (
+              <label className="flex items-center gap-2 text-[0.8125rem] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="form-check-input !mt-0"
+                  checked={delSamples}
+                  onChange={(e) => setDelSamples(e.target.checked)}
+                />
+                <span>
+                  Also delete{" "}
+                  <strong>
+                    {linkedSamples.length} sample
+                    {linkedSamples.length > 1 ? "s" : ""}
+                  </strong>
+                </span>
+              </label>
+            )}
+            {linkedQuotations.length > 0 && (
+              <label className="flex items-center gap-2 text-[0.8125rem] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="form-check-input !mt-0"
+                  checked={delQuotations}
+                  onChange={(e) => setDelQuotations(e.target.checked)}
+                />
+                <span>
+                  Also delete{" "}
+                  <strong>
+                    {linkedQuotations.length} quotation
+                    {linkedQuotations.length > 1 ? "s" : ""}
+                  </strong>
+                </span>
+              </label>
+            )}
+            {linkedContact && (
+              <label className="flex items-center gap-2 text-[0.8125rem] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="form-check-input !mt-0"
+                  checked={delContact}
+                  onChange={(e) => setDelContact(e.target.checked)}
+                />
+                <span>
+                  Also delete contact <strong>{linkedContact.name}</strong>
+                </span>
+              </label>
+            )}
+          </div>
+        )}
+      </ConfirmDeleteOverlay>
     </div>
   );
 }

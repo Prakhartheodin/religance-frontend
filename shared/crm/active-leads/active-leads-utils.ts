@@ -1,12 +1,29 @@
 import type { CrmLead } from "@/shared/crm/store/types";
 import { isTerminalStage } from "./lead-stages";
 
+export type LeadFormSource = "discovery" | "active-leads";
+
+export type LeadEditPrefill = {
+  from?: LeadFormSource;
+  saltId?: string | null;
+  medicineId?: string | null;
+};
+
 /** Static-export-safe edit URL — lead IDs are runtime-generated, not path segments. */
-export function leadEditHref(leadId: string): string {
-  return `/active-leads/edit/?id=${encodeURIComponent(leadId)}`;
+export function leadEditHref(
+  leadId: string,
+  prefill: LeadEditPrefill = {}
+): string {
+  const params = new URLSearchParams();
+  params.set("id", leadId);
+  if (prefill.from) params.set("from", prefill.from);
+  if (prefill.saltId) params.set("saltId", prefill.saltId);
+  if (prefill.medicineId) params.set("medicineId", prefill.medicineId);
+  return `/active-leads/edit/?${params.toString()}`;
 }
 
 export type LeadNewPrefill = {
+  from?: LeadFormSource;
   medicineId?: string | null;
   saltId?: string | null;
   companyName?: string;
@@ -19,9 +36,22 @@ export type LeadNewPrefill = {
   contactPhone?: string;
 };
 
+/** Lead Discovery return URL — preserves salt/medicine selection when provided. */
+export function leadDiscoveryHref(opts?: {
+  saltId?: string | null;
+  medicineId?: string | null;
+}): string {
+  const params = new URLSearchParams();
+  if (opts?.saltId) params.set("saltId", opts.saltId);
+  if (opts?.medicineId) params.set("medicineId", opts.medicineId);
+  const q = params.toString();
+  return q ? `/lead-discovery/?${q}` : "/lead-discovery/";
+}
+
 /** Create-mode URL with optional discovery / catalogue pre-fill. */
 export function leadNewHref(prefill: LeadNewPrefill = {}): string {
   const params = new URLSearchParams();
+  if (prefill.from) params.set("from", prefill.from);
   if (prefill.medicineId) params.set("medicineId", prefill.medicineId);
   if (prefill.saltId) params.set("saltId", prefill.saltId);
   if (prefill.companyName) params.set("companyName", prefill.companyName);

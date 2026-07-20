@@ -36,29 +36,85 @@ function LeadFormEmptyTable({ message }: { message: string }) {
   );
 }
 
+/** Icon + label Edit/Delete pair for lead-form and CRM table rows. */
+export function LeadFormRowActions({
+  onEdit,
+  onDelete,
+  editLabel = "Edit",
+  deleteLabel = "Delete",
+  editAriaLabel,
+  deleteAriaLabel,
+}: {
+  onEdit: () => void;
+  onDelete: () => void;
+  editLabel?: string;
+  deleteLabel?: string;
+  editAriaLabel?: string;
+  deleteAriaLabel?: string;
+}) {
+  return (
+    <div className="lead-form-row-actions inline-flex items-center justify-end gap-2 whitespace-nowrap">
+      <button
+        type="button"
+        className="ti-btn ti-btn-light !min-h-[2.75rem] !mb-0"
+        onClick={onEdit}
+        aria-label={editAriaLabel ?? editLabel}
+      >
+        <i className="ri-edit-line" aria-hidden="true" />
+        {editLabel}
+      </button>
+      <button
+        type="button"
+        className="ti-btn ti-btn-outline-danger !min-h-[2.75rem] !mb-0"
+        onClick={onDelete}
+        aria-label={deleteAriaLabel ?? deleteLabel}
+      >
+        <i className="ri-delete-bin-line" aria-hidden="true" />
+        {deleteLabel}
+      </button>
+    </div>
+  );
+}
+
 export function LeadFormDataTable({
   columns,
   rows,
   emptyMessage,
+  actionsColumn = false,
 }: {
   columns: string[];
   rows: ReactNode[][];
   emptyMessage: string;
+  /** Pin the last column (Edit/Delete) visible during horizontal scroll. */
+  actionsColumn?: boolean;
 }) {
   if (rows.length === 0) {
     return <LeadFormEmptyTable message={emptyMessage} />;
   }
+  const lastIdx = columns.length - 1;
+  const beforeActionsIdx = lastIdx - 1;
+  const wrapClass = actionsColumn
+    ? "table-responsive lead-form-table-wrap lead-form-table-wrap--actions"
+    : "table-responsive lead-form-table-wrap";
+  const cellClass = (idx: number) => {
+    if (!actionsColumn) return "align-middle";
+    if (idx === lastIdx) return "align-middle lead-form-table-actions";
+    if (idx === beforeActionsIdx) return "align-middle lead-form-table-before-actions";
+    return "align-middle";
+  };
+  const headerClass = (idx: number) => {
+    const base = "text-[0.6875rem] uppercase tracking-wide whitespace-nowrap";
+    if (actionsColumn && idx === lastIdx) return `${base} lead-form-table-actions`;
+    if (actionsColumn && idx === beforeActionsIdx) return `${base} lead-form-table-before-actions`;
+    return base;
+  };
   return (
-    <div className="table-responsive lead-form-table-wrap">
+    <div className={wrapClass}>
       <table className="table ti-custom-table min-w-full mb-0 text-[0.75rem]">
         <thead className="ti-custom-table-head">
           <tr>
-            {columns.map((col) => (
-              <th
-                key={col}
-                scope="col"
-                className="text-[0.6875rem] uppercase tracking-wide whitespace-nowrap"
-              >
+            {columns.map((col, idx) => (
+              <th key={idx} scope="col" className={headerClass(idx)}>
                 {col}
               </th>
             ))}
@@ -68,7 +124,7 @@ export function LeadFormDataTable({
           {rows.map((cells, rowIdx) => (
             <tr key={rowIdx}>
               {cells.map((cell, cellIdx) => (
-                <td key={cellIdx} className="align-middle">
+                <td key={cellIdx} className={cellClass(cellIdx)}>
                   {cell}
                 </td>
               ))}

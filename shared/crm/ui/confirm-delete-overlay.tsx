@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 export type ConfirmDeleteOverlayProps = {
@@ -12,6 +12,8 @@ export type ConfirmDeleteOverlayProps = {
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
+  /** Optional extra controls (e.g. cascade checkboxes) shown above the actions. */
+  children?: ReactNode;
 };
 
 export function ConfirmDeleteOverlay({
@@ -23,6 +25,7 @@ export function ConfirmDeleteOverlay({
   onConfirm,
   onCancel,
   busy = false,
+  children,
 }: ConfirmDeleteOverlayProps) {
   const titleId = useId();
   const descId = useId();
@@ -75,6 +78,9 @@ export function ConfirmDeleteOverlay({
           <strong className="confirm-delete-overlay__entity">{entityName}</strong>{" "}
           will be permanently removed.
         </p>
+        {children && (
+          <div className="confirm-delete-overlay__extra">{children}</div>
+        )}
         <div className="confirm-delete-overlay__actions">
           <button
             ref={cancelRef}

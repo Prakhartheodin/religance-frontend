@@ -708,6 +708,61 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
   padding-inline: 0.5rem 1.5rem;
   box-sizing: border-box;
 
+  .lead-discovery-col-header th {
+    padding: 0 !important;
+    vertical-align: middle;
+  }
+
+  .lead-discovery-sort-header {
+    @apply cursor-pointer;
+    @apply inline-flex items-center gap-1;
+    @apply border-0 bg-transparent;
+    @apply text-inherit uppercase;
+    min-height: 2.75rem;
+    width: 100%;
+    padding-inline: 0.5rem !important;
+    padding-block: 0.5rem !important;
+    font-weight: 600 !important;
+    font-size: 0.6875rem !important;
+    letter-spacing: 0.045em;
+    line-height: 1.25;
+    text-align: start;
+
+    &:hover {
+      @apply text-primary;
+    }
+
+    &:focus-visible {
+      outline: 2px solid rgb(var(--primary-rgb) / 0.55);
+      outline-offset: -2px;
+    }
+
+    &--end {
+      @apply justify-end;
+      text-align: end;
+    }
+
+    &--active .lead-discovery-sort-label {
+      @apply text-primary font-semibold;
+    }
+  }
+
+  .lead-discovery-sort-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    flex-shrink: 0;
+    opacity: 0.55;
+    font-size: 0.875rem;
+    line-height: 1;
+  }
+
+  .lead-discovery-sort-header--active .lead-discovery-sort-icon {
+    @apply text-primary;
+    opacity: 1;
+  }
+
   .ti-custom-table {
     width: 100%;
     min-width: 0;
@@ -1244,11 +1299,10 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
   }
 
   .active-leads-drawer-scroll {
-    flex: 1 1 auto;
+    flex: 1 1 0%;
     min-height: 0;
     min-width: 0;
     overflow: hidden;
-    height: 0; /* flex child scroll trick */
 
     .simplebar-wrapper,
     .simplebar-mask,
@@ -1258,6 +1312,12 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
 
     .simplebar-content-wrapper {
       outline: none;
+      overflow-y: auto !important;
+      max-height: 100%;
+    }
+
+    .simplebar-content {
+      min-width: 0;
     }
   }
 
@@ -1265,7 +1325,7 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     min-width: 0;
     height: auto !important;
     max-height: none !important;
-    padding: 0 1rem 1rem !important;
+    padding: 0 1rem 5.5rem !important;
     overflow: visible !important;
   }
 
@@ -1303,7 +1363,13 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     padding: 0.875rem 1rem;
     border-radius: 0.5rem;
     border: 1px solid rgb(var(--default-border) / 1);
+    min-width: 0;
+    overflow: hidden;
     @apply bg-light/40 dark:bg-black/15;
+
+    .grid > * {
+      min-width: 0;
+    }
   }
 
   .active-leads-info-card-icon {
@@ -1316,76 +1382,6 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
     font-size: 0.875rem;
     background-color: rgb(var(--primary-rgb) / 0.1);
     @apply text-primary;
-  }
-
-  /* Lead Form page */
-  .lead-form-page {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  .lead-form-page__body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    padding-bottom: 6rem;
-  }
-
-  .lead-form-page__footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 20;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 0.75rem 1rem;
-    border-top: 1px solid rgb(var(--default-border) / 1);
-    @apply bg-white dark:bg-bodybg;
-
-    .ti-btn {
-      min-height: 2.75rem;
-    }
-  }
-
-  .lead-form-subgroup {
-    padding: 0.875rem 1rem;
-    border-radius: 0.5rem;
-    border: 1px solid rgb(var(--default-border) / 1);
-    @apply bg-light/20 dark:bg-black/10;
-  }
-
-  .lead-form-callout {
-    padding: 0.875rem 1rem;
-    border-radius: 0.5rem;
-    border: 1px solid rgb(var(--default-border) / 1);
-    @apply bg-light/40 dark:bg-black/15;
-  }
-
-  .lead-discovery-results-status {
-    font-size: 0.75rem;
-    min-width: 0;
-  }
-
-  .lead-form-stub-body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .lead-form-table-wrap {
-    margin-bottom: 0.5rem;
-
-    .table {
-      margin-bottom: 0;
-    }
-
-    th,
-    td {
-      vertical-align: middle;
-    }
   }
 
   .active-leads-timeline-item {
@@ -1549,6 +1545,14 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
 
   &__entity {
     @apply text-defaulttextcolor;
+  }
+
+  &__extra {
+    margin-bottom: 1.25rem;
+    padding: 0.75rem 0.875rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(var(--default-border) / 1);
+    @apply bg-light/30 dark:bg-black/15;
   }
 
   &__actions {
@@ -1917,6 +1921,133 @@ html[data-nav-layout="vertical"]:not([data-toggled="menu-click-closed"]):not([da
         width: 100%;
       }
     }
+  }
+}
+
+/* Lead Form page — top-level (not under .active-leads-page; form routes have no that wrapper) */
+.lead-form-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.lead-form-page__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 6rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.lead-form-page__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgb(var(--default-border) / 1);
+  @apply bg-white dark:bg-bodybg;
+
+  .ti-btn {
+    min-height: 2.75rem;
+  }
+}
+
+.lead-form-subgroup {
+  padding: 0.875rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--default-border) / 1);
+  @apply bg-light/20 dark:bg-black/10;
+}
+
+.lead-form-callout {
+  padding: 0.875rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--default-border) / 1);
+  @apply bg-light/40 dark:bg-black/15;
+}
+
+.lead-discovery-results-status {
+  font-size: 0.75rem;
+  min-width: 0;
+}
+
+.lead-form-stub-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lead-form-table-wrap {
+  margin-bottom: 0.5rem;
+
+  .table {
+    margin-bottom: 0;
+  }
+
+  th,
+  td {
+    vertical-align: middle;
+  }
+}
+
+.lead-form-table-wrap--actions {
+  .lead-form-table-before-actions {
+    min-width: 7rem;
+    max-width: 9rem;
+    padding-inline-end: 0.75rem;
+  }
+
+  .lead-form-table-actions {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    min-width: 14rem;
+    width: 14rem;
+    padding-inline-start: 0.75rem;
+    text-align: end;
+    border-inline-start: 1px solid rgb(var(--default-border) / 0.35);
+    @apply bg-white dark:bg-bodybg;
+    box-shadow: -6px 0 10px -6px rgb(0 0 0 / 0.14);
+  }
+
+  thead .lead-form-table-actions {
+    z-index: 3;
+    @apply bg-gray-50 dark:bg-black/20;
+  }
+}
+
+/* Theme .ti-btn-sm is 1.75rem² — breaks icon+label row actions */
+.lead-form-row-actions .ti-btn {
+  width: auto !important;
+  height: auto !important;
+  margin-bottom: 0 !important;
+}
+
+/* Scroll-to-top is a sibling of .page in content layout — must be body-scoped, not nested */
+body:has(.lead-form-page) {
+  --lead-form-footer-height: 4.25rem; /* py-3 + 2.75rem button row */
+
+  @media (max-width: 639px) {
+    --lead-form-footer-height: 7.5rem; /* stacked Save + Cancel on mobile */
+  }
+
+  .scrollToTop {
+    bottom: calc(var(--lead-form-footer-height) + 1rem);
+    inset-inline-end: auto;
+    inset-inline-start: 1.25rem;
+    z-index: 30;
+    height: 2.75rem;
+    width: 2.75rem;
   }
 }
 

@@ -1,6 +1,8 @@
 import type { BackendBuyerMaster } from "@/shared/crm/store/outlook-api";
 import { getExcelBuyersForMedicine } from "@/shared/crm/lead-discovery/discovery-excel";
 import type { DiscoveredCompany } from "@/shared/crm/lead-discovery/types";
+import { normalizeName } from "@/shared/crm/store/lead-form-utils";
+import type { CrmCompany, CrmLead } from "@/shared/crm/store/types";
 
 export type DiscoveryMedicine = {
   id: string;
@@ -67,6 +69,120 @@ export function getCompaniesForCheckedMedicines(
   }
 
   return rows.sort((a, b) => b.leadScore - a.leadScore);
+}
+
+/** Discovery Results row id for a lead — must stay in sync with getCompaniesFromLeads. */
+export function discoveredCompanyIdForLead(lead: CrmLead): string {
+  return lead.discoveryCompanyId ?? `lead-company-${lead.companyId}`;
+}
+
+/** Medicine id for a Results row — prefer the row's matched medicine over the active tab. */
+export function resolveMedicineIdForDiscoveredCompany(
+  company: DiscoveredCompany,
+  medicines: DiscoveryMedicine[],
+  fallbackMedicineId?: string | null
+): string | null {
+  const byName = medicines.find(
+    (m) => normalizeName(m.name) === normalizeName(company.matchedMedicine)
+  );
+  if (byName) return byName.id;
+  return fallbackMedicineId ?? null;
+}
+
+function pickLeadByMedicine(
+  matches: CrmLead[],
+  opts?: { medicineId?: string | null; matchedMedicine?: string }
+): CrmLead | undefined {
+  if (matches.length === 0) return undefined;
+  if (matches.length === 1) return matches[0];
+
+  const med = opts?.medicineId;
+  if (med) {
+    const byMed = matches.find((l) => l.medicineId === med);
+    if (byMed) return byMed;
+  }
+
+  const medKey = normalizeName(opts?.matchedMedicine ?? "");
+  if (medKey) {
+    const byName = matches.find(
+      (l) => normalizeName(l.matchedMedicine) === medKey
+    );
+    if (byName) return byName;
+  }
+
+  return matches[0];
+}
+
+/** Resolve the CRM lead backing a Discovery Results row (company + optional medicine). */
+export function findLeadForDiscoveredCompany(
+  leads: CrmLead[],
+  company: DiscoveredCompany,
+  opts?: { medicineId?: string | null; matchedMedicine?: string }
+): CrmLead | undefined {
+  const idMatches = leads.filter(
+    (lead) => discoveredCompanyIdForLead(lead) === company.id
+  );
+  const byId = pickLeadByMedicine(idMatches, opts);
+  if (byId) return byId;
+
+  // Catalogue row opened while a manual lead exists for the same company + medicine.
+  const nameKey = normalizeName(company.companyName);
+  const medKey = normalizeName(company.matchedMedicine);
+  const nameMatches = leads.filter((lead) => {
+    if (normalizeName(lead.companyName) !== nameKey) return false;
+    if (opts?.medicineId && lead.medicineId === opts.medicineId) return true;
+    return normalizeName(lead.matchedMedicine) === medKey;
+  });
+  return pickLeadByMedicine(nameMatches, opts);
+}
+
+/**
+ * DiscoveredCompany rows for leads the user created, so a lead made from the
+ * "New Lead" button shows up in Discovery Results too — not only in Active
+ * Leads. Only leads whose medicine is currently checked are returned; multiple
+ * leads for the same company collapse to one row (highest score wins).
+ */
+export function getCompaniesFromLeads(
+  checkedMedicineIds: string[],
+  leads: CrmLead[],
+  companies: CrmCompany[]
+): DiscoveredCompany[] {
+  if (!checkedMedicineIds.length) return [];
+  const companyById = new Map(companies.map((c) => [c.id, c]));
+  const byCompany = new Map<string, DiscoveredCompany>();
+
+  for (const lead of leads) {
+    if (!lead.medicineId || !checkedMedicineIds.includes(lead.medicineId)) {
+      continue;
+    }
+    const company = companyById.get(lead.companyId);
+    const row: DiscoveredCompany = {
+      // Reuse the catalogue buyer id when the lead came from one, so it dedupes
+      // against the catalogue row instead of showing twice.
+      id: discoveredCompanyIdForLead(lead),
+      companyName: lead.companyName,
+      matchedSalt: lead.matchedSalt,
+      matchedMedicine: lead.matchedMedicine,
+      dosageForm: lead.dosageForm,
+      companyType: company?.companyType ?? "",
+      location: lead.location || company?.location || "",
+      category: "",
+      certification: company?.certification ?? "",
+      leadScore: lead.leadScore,
+      sourceProof: "Created lead",
+      matchReasons: ["Created lead"],
+      contactPersons: lead.contactName ? [lead.contactName] : [],
+      designations: lead.contactRole ? [lead.contactRole] : [],
+      emails: lead.contactEmail ? [lead.contactEmail] : [],
+      phoneNumbers: [],
+    };
+    const existing = byCompany.get(row.id);
+    if (!existing || row.leadScore > existing.leadScore) {
+      byCompany.set(row.id, row);
+    }
+  }
+
+  return [...byCompany.values()];
 }
 
 /** Buyers for a single medicine (catalogue rows). */

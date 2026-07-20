@@ -6,6 +6,10 @@ import { useCrm } from "@/shared/crm/store/crm-context";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import SimpleBar from "simplebar-react";
+import {
+  findLeadForDiscoveredCompany,
+  resolveMedicineIdForDiscoveredCompany,
+} from "./discovery-catalog";
 import { getCompanyProfileDetail } from "./company-profile-data";
 import LeadScoreBadge from "./lead-score-badge";
 import type { DiscoveredCompany } from "./types";
@@ -44,26 +48,46 @@ export function CompanyProfileDrawer({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [saveOpen, setSaveOpen] = useState(false);
-  const { findCompanyByDiscoveryId, leads } = useCrm();
+  const { findCompanyByDiscoveryId, leads, medicines } = useCrm();
   const open = company !== null;
   const profile = company ? getCompanyProfileDetail(company) : null;
+  const rowMedicineId = company
+    ? resolveMedicineIdForDiscoveredCompany(
+        company,
+        medicines,
+        prefillMedicineId
+      )
+    : null;
   const existingCompany = company
     ? findCompanyByDiscoveryId(company.id)
     : undefined;
   const existingLead = company
-    ? leads.find((l) => l.discoveryCompanyId === company.id)
+    ? findLeadForDiscoveredCompany(leads, company, {
+        medicineId: rowMedicineId,
+        matchedMedicine: company.matchedMedicine,
+      })
     : undefined;
+  const leadFormMedicineId =
+    existingLead?.medicineId ?? rowMedicineId ?? prefillMedicineId;
 
   const handleLeadForm = () => {
+    if (!profile) return;
     onClose();
     if (existingLead) {
-      router.push(leadEditHref(existingLead.id));
+      router.push(
+        leadEditHref(existingLead.id, {
+          from: "discovery",
+          saltId: prefillSaltId,
+          medicineId: leadFormMedicineId,
+        })
+      );
       return;
     }
     const primaryContact = profile.contacts.find((c) => c.name !== "—");
     router.push(
       leadNewHref({
-        medicineId: prefillMedicineId,
+        from: "discovery",
+        medicineId: leadFormMedicineId,
         saltId: prefillSaltId,
         companyName: profile.companyName,
         companyType: profile.companyType,
@@ -358,13 +382,17 @@ export function CompanyProfileDrawer({
             type="button"
             className="ti-btn ti-btn-light min-h-[2.75rem]"
             onClick={handleLeadForm}
-            aria-label={existingLead ? "Edit active lead on full page" : "Create lead on full page"}
+            aria-label={
+              existingLead
+                ? `Edit lead for ${profile.companyName}`
+                : `Create new lead for ${profile.companyName}`
+            }
           >
             <i
               className={`${existingLead ? "ri-edit-line" : "ri-add-line"} me-1`}
               aria-hidden="true"
             ></i>
-            {existingLead ? "Edit lead" : "New lead"}
+            {existingLead ? "Edit" : "New lead"}
           </button>
           <button
             type="button"

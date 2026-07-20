@@ -31,6 +31,8 @@ export const MenuItems: any = [
 
   linkItem("Active Leads", "/active-leads", "bx-target-lock"),
   linkItem("Lead Discovery", "/lead-discovery", "bx-search-alt"),
+  linkItem("Samples", "/samples", "bx-package"),
+  linkItem("Quotations", "/quotations", "bx-file"),
   linkItem("Inbox", "/inbox", "bx-envelope"),
   linkItem("Saved Contact", "/contacts", "bx-id-card"),
   linkItem("Reports", "/reports", "bx-bar-chart-alt-2"),

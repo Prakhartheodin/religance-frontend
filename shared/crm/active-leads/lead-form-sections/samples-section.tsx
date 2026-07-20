@@ -1,74 +1,115 @@
 "use client";
 
+import {
+  buildSampleInput,
+  emptySampleForm,
+  inputToForm,
+  SampleFormFields,
+  sampleToForm,
+  type SampleFormModel,
+  type SampleInput,
+} from "@/shared/crm/samples/sample-form";
 import { useCrm } from "@/shared/crm/store/crm-context";
-import { useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import {
   LeadFormDataTable,
+  LeadFormRowActions,
   LeadFormSectionShell,
 } from "./lead-form-section-shell";
 
-const SAMPLE_STATUSES = [
-  "Requested",
-  "Dispatched",
-  "In transit",
-  "Delivered",
-  "Feedback received",
-  "Cancelled",
-] as const;
+const dash = (v: string | null | undefined) => (v?.trim() ? v : "—");
 
-type SampleRow = {
-  id: string;
-  product: string;
-  qty: string;
-  batchNo: string;
-  dispatched: string;
-  courierAwb: string;
-  coa: string;
-  status: string;
-  feedback: string;
+type DisplayRow = SampleInput & {
+  key: string;
+  onEdit: () => void;
+  onDelete: () => void;
 };
 
-const emptyForm = () => ({
-  productId: "",
-  qty: "",
-  batchNo: "",
-  status: "Requested",
-  dispatchDate: "",
-  courier: "",
-  awb: "",
-  coaSent: false,
-});
+/**
+ * Edit mode (leadId set): samples read/write the persisted store directly.
+ * Create mode (no leadId, buffer props set): samples are held in a buffer that
+ * lead-form-page flushes into the store once the lead is saved.
+ */
+export function SamplesSection({
+  leadId,
+  pendingSamples,
+  setPendingSamples,
+  defaultProductId,
+}: {
+  leadId?: string;
+  pendingSamples?: SampleInput[];
+  setPendingSamples?: Dispatch<SetStateAction<SampleInput[]>>;
+  /** The lead's own medicine — pre-selected as the sample product. */
+  defaultProductId?: string;
+}) {
+  const { medicines, samples, addSample, updateSample, deleteSample } = useCrm();
+  const newForm = (): SampleFormModel => ({
+    ...emptySampleForm(),
+    productId: defaultProductId ?? "",
+  });
+  const [form, setForm] = useState<SampleFormModel>(newForm);
+  // In buffer mode this holds the buffer index (as a string); in store mode the sample id.
+  const [editingKey, setEditingKey] = useState<string | null>(null);
 
-export function SamplesSection() {
-  const { medicines } = useCrm();
-  const [rows, setRows] = useState<SampleRow[]>([]);
-  const [form, setForm] = useState(emptyForm);
+  // Pre-fill the product with the lead's medicine once it's known (it may arrive
+  // after mount in create mode). Only touches a blank, not-being-edited form.
+  useEffect(() => {
+    if (defaultProductId && editingKey == null) {
+      setForm((f) => (f.productId ? f : { ...f, productId: defaultProductId }));
+    }
+  }, [defaultProductId, editingKey]);
 
-  const handleRecord = () => {
-    if (!form.productId) return;
-    const product =
-      medicines.find((m) => m.id === form.productId)?.name ?? form.productId;
-    const courierAwb = [form.courier, form.awb].filter(Boolean).join(" / ") || "—";
-    setRows((prev) => [
-      {
-        id: `sm-${Date.now()}`,
-        product,
-        qty: form.qty.trim() || "—",
-        batchNo: form.batchNo.trim() || "—",
-        dispatched: form.dispatchDate.trim() || "—",
-        courierAwb,
-        coa: form.coaSent ? "Yes" : "No",
-        status: form.status,
-        feedback: "—",
-      },
-      ...prev,
-    ]);
-    setForm(emptyForm());
+  const isBuffer = !leadId;
+  const resetForm = () => {
+    setForm(newForm());
+    setEditingKey(null);
   };
 
+  const handleSubmit = () => {
+    if (!form.productId) return;
+    const input = buildSampleInput(form, medicines);
+    if (isBuffer) {
+      if (editingKey != null) {
+        const idx = Number(editingKey);
+        setPendingSamples?.((prev) => prev.map((s, i) => (i === idx ? input : s)));
+      } else {
+        setPendingSamples?.((prev) => [input, ...prev]);
+      }
+    } else if (editingKey != null) {
+      updateSample(editingKey, input);
+    } else {
+      addSample(leadId, input);
+    }
+    resetForm();
+  };
+
+  const rows: DisplayRow[] = isBuffer
+    ? (pendingSamples ?? []).map((s, i) => ({
+        ...s,
+        key: String(i),
+        onEdit: () => {
+          setForm(inputToForm(s));
+          setEditingKey(String(i));
+        },
+        onDelete: () =>
+          setPendingSamples?.((prev) => prev.filter((_, j) => j !== i)),
+      }))
+    : samples
+        .filter((s) => s.leadId === leadId)
+        .map((s) => ({
+          ...s,
+          key: s.id,
+          onEdit: () => {
+            setForm(sampleToForm(s));
+            setEditingKey(s.id);
+          },
+          onDelete: () => deleteSample(s.id),
+        }));
+
   return (
-    <LeadFormSectionShell title="Samples" badge="UI preview">
+    <LeadFormSectionShell title="Samples">
       <LeadFormDataTable
+        actionsColumn
         columns={[
           "Product",
           "Qty",
@@ -77,145 +118,58 @@ export function SamplesSection() {
           "Courier / AWB",
           "CoA",
           "Status",
-          "Customer feedback",
+          "Feedback",
+          "Actions",
         ]}
         emptyMessage="No samples recorded for this lead yet."
         rows={rows.map((r) => [
-          r.product,
-          r.qty,
-          r.batchNo,
-          r.dispatched,
-          r.courierAwb,
-          r.coa,
+          dash(r.product),
+          dash(r.qty),
+          dash(r.batchNo),
+          dash(r.dispatchDate),
+          dash([r.courier, r.awb].filter(Boolean).join(" / ")),
+          r.coaSent ? "Yes" : "No",
           r.status,
-          r.feedback,
+          <span key="fb" className="block max-w-[9rem] truncate" title={r.feedback?.trim() || undefined}>
+            {dash(r.feedback)}
+          </span>,
+          <LeadFormRowActions
+            key="act"
+            onEdit={r.onEdit}
+            onDelete={r.onDelete}
+          />,
         ])}
       />
 
       <div className="lead-form-subgroup mt-4">
-        <h6 className="text-[0.8125rem] font-semibold mb-3">Record sample</h6>
-        <div className="grid grid-cols-12 gap-3">
-          <div className="col-span-12 md:col-span-4">
-            <label className="form-label text-[0.75rem]" htmlFor="sm-product">
-              Product
-            </label>
-            <select
-              id="sm-product"
-              className="form-select"
-              value={form.productId}
-              onChange={(e) => setForm((f) => ({ ...f, productId: e.target.value }))}
-            >
-              <option value="">—</option>
-              {medicines.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-span-12 md:col-span-4">
-            <label className="form-label text-[0.75rem]" htmlFor="sm-qty">
-              Quantity
-            </label>
-            <input
-              id="sm-qty"
-              className="form-control"
-              placeholder="e.g. 2 x 10 g"
-              value={form.qty}
-              onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
-            />
-          </div>
-          <div className="col-span-12 md:col-span-4">
-            <label className="form-label text-[0.75rem]" htmlFor="sm-batch">
-              Batch no.
-            </label>
-            <input
-              id="sm-batch"
-              className="form-control"
-              value={form.batchNo}
-              onChange={(e) => setForm((f) => ({ ...f, batchNo: e.target.value }))}
-            />
-          </div>
-          <div className="col-span-12">
-            <label className="form-label text-[0.75rem]" htmlFor="sm-status">
-              Status
-            </label>
-            <select
-              id="sm-status"
-              className="form-select"
-              value={form.status}
-              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-            >
-              {SAMPLE_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-span-12 md:col-span-4">
-            <label className="form-label text-[0.75rem]" htmlFor="sm-dispatch">
-              Dispatch date
-            </label>
-            <input
-              id="sm-dispatch"
-              className="form-control"
-              placeholder="DD-MM-YYYY"
-              value={form.dispatchDate}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, dispatchDate: e.target.value }))
-              }
-            />
-          </div>
-          <div className="col-span-12 md:col-span-4">
-            <label className="form-label text-[0.75rem]" htmlFor="sm-courier">
-              Courier
-            </label>
-            <input
-              id="sm-courier"
-              className="form-control"
-              value={form.courier}
-              onChange={(e) => setForm((f) => ({ ...f, courier: e.target.value }))}
-            />
-          </div>
-          <div className="col-span-12 md:col-span-4">
-            <label className="form-label text-[0.75rem]" htmlFor="sm-awb">
-              AWB / tracking no.
-            </label>
-            <input
-              id="sm-awb"
-              className="form-control"
-              value={form.awb}
-              onChange={(e) => setForm((f) => ({ ...f, awb: e.target.value }))}
-            />
-          </div>
-          <div className="col-span-12">
-            <label className="flex items-center gap-2 text-[0.8125rem] cursor-pointer min-h-[2.75rem]">
-              <input
-                type="checkbox"
-                className="form-check-input"
-                checked={form.coaSent}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, coaSent: e.target.checked }))
-                }
-              />
-              CoA sent with sample
-            </label>
-          </div>
-          <div className="col-span-12 flex justify-end">
+        <h6 className="text-[0.8125rem] font-semibold mb-3">
+          {editingKey != null ? "Edit sample" : "Record sample"}
+        </h6>
+        <SampleFormFields
+          form={form}
+          onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+          medicines={medicines}
+          showFeedback={editingKey != null}
+        />
+        <div className="flex justify-end gap-2 mt-3">
+          {editingKey != null && (
             <button
               type="button"
-              className="ti-btn ti-btn-primary !min-h-[2.75rem]"
-              onClick={handleRecord}
-              disabled={!form.productId}
+              className="ti-btn ti-btn-light !min-h-[2.75rem]"
+              onClick={resetForm}
             >
-              Record sample
+              Cancel
             </button>
-          </div>
+          )}
+          <button
+            type="button"
+            className="ti-btn ti-btn-primary !min-h-[2.75rem]"
+            onClick={handleSubmit}
+            disabled={!form.productId}
+          >
+            {editingKey != null ? "Save changes" : "Record sample"}
+          </button>
         </div>
-        <p className="text-[0.75rem] text-textmuted mb-0 mt-3">
-          Saved with the lead in a future release — entries here are session-only for now.
-        </p>
       </div>
     </LeadFormSectionShell>
   );

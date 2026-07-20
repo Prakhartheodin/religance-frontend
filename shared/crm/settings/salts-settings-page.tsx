@@ -2,6 +2,7 @@
 
 import type { SaltMasterItem } from "@/shared/crm/store/salts-master";
 import { useCrm } from "@/shared/crm/store/crm-context";
+import { ConfirmDeleteOverlay } from "@/shared/crm/ui/confirm-delete-overlay";
 import ExcelMenu from "@/shared/crm/settings/excel-menu";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
@@ -37,6 +38,8 @@ export default function SaltsSettingsPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [savedFlash, setSavedFlash] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const savedSalt = useMemo(
     () => salts.find((s) => s.id === selectedId),
@@ -111,10 +114,6 @@ export default function SaltsSettingsPage() {
     ? (medicineCountBySalt.get(savedSalt.id) ?? 0)
     : 0;
   const leadCount = draft ? (leadCountBySaltName.get(draft.name) ?? 0) : 0;
-  const canDelete =
-    savedSalt &&
-    medicineCount === 0 &&
-    (leadCountBySaltName.get(savedSalt.name) ?? 0) === 0;
 
   const handleSave = async () => {
     if (!draft || !isDirty) return;
@@ -141,17 +140,17 @@ export default function SaltsSettingsPage() {
     setSearch("");
   };
 
-  const handleDelete = async () => {
+  const performDelete = async () => {
     if (!selectedId) return;
+    setDeleting(true);
     setDeleteError("");
     const ok = await deleteSalt(selectedId);
+    setDeleting(false);
     if (!ok) {
-      setDeleteError(
-        medicineCount > 0
-          ? "Cannot delete — medicines are linked to this salt."
-          : "Could not delete this salt."
-      );
+      setDeleteError("Could not delete this salt. Check your connection.");
+      return;
     }
+    setConfirmingDelete(false);
   };
 
   if (!hydrated || !draft) {
@@ -374,13 +373,7 @@ export default function SaltsSettingsPage() {
                     <button
                       type="button"
                       className="ti-btn ti-btn-danger !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-                      onClick={handleDelete}
-                      disabled={!canDelete}
-                      title={
-                        !canDelete
-                          ? "Remove linked medicines or leads before deleting"
-                          : undefined
-                      }
+                      onClick={() => setConfirmingDelete(true)}
                     >
                       Delete
                     </button>
@@ -443,6 +436,33 @@ export default function SaltsSettingsPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDeleteOverlay
+        open={confirmingDelete}
+        title="Delete salt?"
+        entityName={draft.name}
+        description={buildSaltDeleteWarning(medicineCount, leadCount)}
+        busy={deleting}
+        onConfirm={performDelete}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </Fragment>
   );
+}
+
+/** Spells out the cascade so the user knows what deleting a salt takes with it. */
+function buildSaltDeleteWarning(medicineCount: number, leadCount: number): string {
+  const parts: string[] = [];
+  if (medicineCount > 0) {
+    parts.push(
+      `${medicineCount} linked medicine${medicineCount === 1 ? "" : "s"} will be unlinked (and removed if this was their only salt)`
+    );
+  }
+  if (leadCount > 0) {
+    parts.push(
+      `${leadCount} active lead${leadCount === 1 ? "" : "s"} keep the name but lose the link`
+    );
+  }
+  const detail = parts.length ? `${parts.join("; ")}. ` : "";
+  return `${detail}This cannot be undone —`;
 }

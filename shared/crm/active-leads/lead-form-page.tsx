@@ -1,13 +1,22 @@
 "use client";
 
 import { DuplicateLeadDialog } from "@/shared/crm/active-leads/duplicate-lead-dialog";
+import { LeadFormSuccessOverlay } from "@/shared/crm/active-leads/lead-form-success-overlay";
 import { SaltMedicineFields } from "@/shared/crm/active-leads/salt-medicine-fields";
 import { FollowUpsSection } from "@/shared/crm/active-leads/lead-form-sections/follow-ups-section";
 import { QuotationsSection } from "@/shared/crm/active-leads/lead-form-sections/quotations-section";
 import { SamplesSection } from "@/shared/crm/active-leads/lead-form-sections/samples-section";
-import { leadEditHref } from "@/shared/crm/active-leads/active-leads-utils";
+import type { SampleInput } from "@/shared/crm/samples/sample-form";
+import type { QuotationInput } from "@/shared/crm/quotations/quotation-form";
+import { leadEditHref, type LeadFormSource } from "@/shared/crm/active-leads/active-leads-utils";
+import {
+  LEAD_PRIORITIES,
+  LEAD_SEGMENTS,
+  LEAD_SOURCES,
+  MARKET_TIERS,
+  QUAL_SCORE_MAX,
+} from "@/shared/crm/active-leads/lead-form-constants";
 import { LEAD_STAGES } from "@/shared/crm/active-leads/lead-stages";
-import LeadScoreBadge from "@/shared/crm/lead-discovery/lead-score-badge";
 import { useCrm } from "@/shared/crm/store/crm-context";
 import {
   findCompanyByNormalizedName,
@@ -22,7 +31,6 @@ import {
   getUserDisplayName,
 } from "@/shared/auth/auth-client";
 import {
-  DEFAULT_LEAD_SCORE,
   FALLBACK_TEAM_ASSIGNEES,
   type CrmLead,
   type LeadStage,
@@ -62,7 +70,6 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
   const {
     leads,
     companies,
-    contacts,
     salts,
     medicines,
     hydrated,
@@ -70,9 +77,15 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     masterDataSynced,
     createLeadWithCompany,
     updateLeadWithCompany,
+    addSample,
+    addQuotation,
     getCompany,
     getContact,
   } = useCrm();
+
+  // Samples recorded before the lead exists; flushed into the store on create.
+  const [pendingSamples, setPendingSamples] = useState<SampleInput[]>([]);
+  const [pendingQuotations, setPendingQuotations] = useState<QuotationInput[]>([]);
 
   const lead = useMemo(
     () => (mode === "edit" ? leads.find((l) => l.id === leadId) : undefined),
@@ -94,30 +107,69 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
   const [contactDepartment, setContactDepartment] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
-  const [contactNotes, setContactNotes] = useState("");
 
   const [saltId, setSaltId] = useState("");
   const [medicineId, setMedicineId] = useState("");
+  const [medicineIds, setMedicineIds] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [stage, setStage] = useState<LeadStage>("Saved");
   const [assignedTo, setAssignedTo] = useState<string>(() => getUserDisplayName());
-  const [teamAssignees, setTeamAssignees] = useState<string[]>([]);
+  const [marketTier, setMarketTier] = useState("");
+  const [segment, setSegment] = useState("");
+  const [leadSource, setLeadSource] = useState("");
+  const [priority, setPriority] = useState("");
+  const [qualScore, setQualScore] = useState(0);
+  const [potentialQty, setPotentialQty] = useState("");
+  const [estAnnualValue, setEstAnnualValue] = useState("");
+  const [lastContactDate, setLastContactDate] = useState("");
   const [followUpDate, setFollowUpDate] = useState(followUpInDays(7));
+  const [nextAction, setNextAction] = useState("");
+  const [docsShared, setDocsShared] = useState("");
+  const [lastDiscussionSummary, setLastDiscussionSummary] = useState("");
   const [notes, setNotes] = useState("");
 
   const [dirty, setDirty] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saltMedicineError, setSaltMedicineError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [successToast, setSuccessToast] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [hydratedForm, setHydratedForm] = useState(mode === "create");
   const [duplicateLead, setDuplicateLead] = useState<CrmLead | null>(null);
   const [titleTouched, setTitleTouched] = useState(false);
-  const [pendingNavigateLeadId, setPendingNavigateLeadId] = useState<string | null>(
+  const [saveSuccessLeadId, setSaveSuccessLeadId] = useState<string | null>(
     null
   );
   const [submitHint, setSubmitHint] = useState<string | null>(null);
+  const [teamAssignees, setTeamAssignees] = useState<string[]>([]);
+
+  const syncPrimaryMedicine = (id: string) => {
+    setMedicineId(id);
+    if (!id) return;
+    setMedicineIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
+
+  const toggleMedicineInterest = (id: string) => {
+    setMedicineIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const formatDisplayDate = (iso: string | undefined) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const formSource: LeadFormSource =
+    searchParams.get("from") === "discovery" ? "discovery" : "active-leads";
+
+  const returnSaltId = searchParams.get("saltId") ?? undefined;
+  const returnMedicineId = searchParams.get("medicineId") ?? undefined;
 
   const selectedMedicine = useMemo(
     () => medicines.find((m) => m.id === medicineId),
@@ -168,6 +220,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     const saltParam = searchParams.get("saltId");
     const med = medicines.find((m) => m.id === medId);
     setMedicineId(medId);
+    if (medId) setMedicineIds([medId]);
     setSaltId(resolvePrefillSaltId(saltParam, med));
 
     const cn = searchParams.get("companyName");
@@ -215,22 +268,33 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
 
     setSaltId(lead.saltId ?? "");
     setMedicineId(lead.medicineId ?? "");
+    setMedicineIds(
+      lead.medicineIds?.length
+        ? lead.medicineIds
+        : lead.medicineId
+          ? [lead.medicineId]
+          : []
+    );
     setTitle(lead.title);
     setStage(lead.stage);
     setAssignedTo(lead.assignedTo);
+    setMarketTier(lead.marketTier ?? "");
+    setSegment(lead.segment ?? "");
+    setLeadSource(lead.leadSource ?? "");
+    setPriority(lead.priority ?? "");
+    setQualScore(lead.qualScore ?? 0);
+    setPotentialQty(lead.potentialQty ?? "");
+    setEstAnnualValue(lead.estAnnualValue ?? "");
+    setLastContactDate(lead.lastContactDate ?? "");
     setFollowUpDate(lead.followUpDate);
+    setNextAction(lead.nextAction ?? "");
+    setDocsShared(lead.docsShared ?? "");
+    setLastDiscussionSummary(lead.lastDiscussionSummary ?? "");
     setNotes(lead.notes);
     setTitleTouched(true);
     setHydratedForm(true);
     setDirty(false);
   }, [mode, lead, getCompany, getContact, hydratedForm]);
-
-  useEffect(() => {
-    if (!pendingNavigateLeadId) return;
-    if (!leads.some((l) => l.id === pendingNavigateLeadId)) return;
-    router.replace(leadEditHref(pendingNavigateLeadId));
-    setPendingNavigateLeadId(null);
-  }, [pendingNavigateLeadId, leads, router]);
 
   useEffect(() => {
     if (titleTouched || !companyName.trim() || !selectedMedicine) return;
@@ -247,12 +311,6 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
-
-  useEffect(() => {
-    if (!successToast) return;
-    const t = window.setTimeout(() => setSuccessToast(null), 5000);
-    return () => window.clearTimeout(t);
-  }, [successToast]);
 
   const fillFromExistingCompany = (companyId: string) => {
     const company = companies.find((c) => c.id === companyId);
@@ -337,6 +395,12 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     );
     const effectiveSalt =
       salts.find((s) => s.id === effectiveSaltId) ?? selectedSalt;
+    const interestIds =
+      medicineIds.length > 0
+        ? medicineIds
+        : medicineId
+          ? [medicineId]
+          : [];
 
     return {
     company: {
@@ -364,13 +428,25 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     lead: {
       saltId: effectiveSaltId,
       medicineId,
+      medicineIds: interestIds,
       matchedSalt: effectiveSalt?.name ?? selectedSalt?.name ?? "",
       matchedMedicine: selectedMedicine?.name ?? "",
       dosageForm: selectedMedicine?.dosageForm ?? "API",
       title: effectiveTitle,
       stage,
       assignedTo,
+      marketTier: marketTier.trim(),
+      segment: segment.trim(),
+      leadSource: leadSource.trim(),
+      priority: priority.trim(),
+      qualScore: Math.min(QUAL_SCORE_MAX, Math.max(0, qualScore)),
+      potentialQty: potentialQty.trim(),
+      estAnnualValue: estAnnualValue.trim(),
+      lastContactDate: lastContactDate.trim(),
       followUpDate,
+      nextAction: nextAction.trim(),
+      docsShared: docsShared.trim(),
+      lastDiscussionSummary: lastDiscussionSummary.trim(),
       notes: notes.trim(),
       location: location.trim(),
     },
@@ -414,15 +490,17 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
       const input = buildInput();
       if (mode === "create") {
         const result = createLeadWithCompany(input);
+        // Flush buffered samples now that the lead (and its company/owner) exists.
+        pendingSamples.forEach((s) => addSample(result.leadId, s));
+        setPendingSamples([]);
+        pendingQuotations.forEach((q) => addQuotation(result.leadId, q));
+        setPendingQuotations([]);
         setDirty(false);
-        setSuccessToast(
-          "Lead created. It won't appear in Discovery Results until saved from there."
-        );
-        setPendingNavigateLeadId(result.leadId);
+        setSaveSuccessLeadId(result.leadId);
       } else if (lead) {
         updateLeadWithCompany(lead.id, input);
         setDirty(false);
-        setSuccessToast("Lead saved.");
+        setSaveSuccessLeadId(lead.id);
       }
     } catch {
       setSaveError("Could not save lead. Check your connection and try again.");
@@ -477,7 +555,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
     return (
       <Fragment>
         <Seo title="Lead not found" />
-        <div className="max-w-5xl mx-auto py-8">
+        <div className="w-full py-8">
           <div className="alert alert-warning text-[0.8125rem] mb-3" role="alert">
             This lead could not be found. It may have been deleted or is still
             syncing.
@@ -512,16 +590,6 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
           mainpage={pageTitle}
         />
 
-        {successToast && (
-          <div
-            className="alert alert-success text-[0.8125rem] mb-3"
-            role="status"
-            aria-live="polite"
-          >
-            {successToast}
-          </div>
-        )}
-
         <div className="lead-form-page__body flex-1 min-h-0 overflow-y-auto pb-24">
           {saveError && (
             <div className="alert alert-danger text-[0.8125rem] mb-3" role="alert">
@@ -542,15 +610,57 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
             </div>
           )}
 
-          <div className="max-w-5xl mx-auto">
+          <div className="w-full min-w-0">
             <div className="box custom-box mb-4">
               <div className="box-header border-b border-defaultborder dark:border-defaultborder/10">
                 <h6 className="box-title mb-0 before:!hidden">Lead details</h6>
               </div>
               <div className="box-body space-y-4">
+                {mode === "edit" && lead && (
+                  <div className="lead-form-subgroup">
+                    <div className="grid grid-cols-12 gap-3">
+                      <div className="col-span-12 md:col-span-4">
+                        <label className="form-label text-[0.75rem]">Lead ID</label>
+                        <input
+                          className="form-control bg-light dark:bg-black/20"
+                          value={lead.id}
+                          readOnly
+                          aria-readonly
+                        />
+                      </div>
+                      <div className="col-span-12 md:col-span-4">
+                        <label className="form-label text-[0.75rem]">Date added</label>
+                        <input
+                          className="form-control bg-light dark:bg-black/20"
+                          value={formatDisplayDate(lead.createdAt)}
+                          readOnly
+                          aria-readonly
+                        />
+                      </div>
+                      <div className="col-span-12 md:col-span-4">
+                        <label className="form-label text-[0.75rem]">Owner</label>
+                        <select
+                          className="form-select"
+                          value={assignedTo}
+                          onChange={(e) => {
+                            setAssignedTo(e.target.value);
+                            markDirty();
+                          }}
+                        >
+                          {assigneeOptions.map((a) => (
+                            <option key={a} value={a}>
+                              {a}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="lead-form-subgroup">
                   <h6 className="text-[0.75rem] font-semibold text-textmuted uppercase tracking-wide mb-3">
-                    Company
+                    Company &amp; contact
                   </h6>
                   <div className="grid grid-cols-12 gap-3">
                     {companies.length > 0 && mode === "create" && (
@@ -574,9 +684,9 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         </select>
                       </div>
                     )}
-                    <div className="col-span-12 md:col-span-6">
+                    <div className="col-span-12 md:col-span-4">
                       <label className="form-label text-[0.75rem]" htmlFor="company-name">
-                        Company name
+                        Company name *
                       </label>
                       <input
                         id="company-name"
@@ -595,18 +705,60 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         </p>
                       )}
                     </div>
-                    <div className="col-span-12 md:col-span-6">
-                      <label className="form-label text-[0.75rem]">Company type</label>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Contact person</label>
                       <input
                         className="form-control"
-                        value={companyType}
+                        value={contactName}
                         onChange={(e) => {
-                          setCompanyType(e.target.value);
+                          setContactName(e.target.value);
                           markDirty();
                         }}
                       />
                     </div>
-                    <div className="col-span-12 md:col-span-6">
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Designation</label>
+                      <input
+                        className="form-control"
+                        value={contactRole}
+                        onChange={(e) => {
+                          setContactRole(e.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Phone / WhatsApp</label>
+                      <input
+                        className="form-control"
+                        value={contactPhone}
+                        onChange={(e) => {
+                          setContactPhone(e.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Email</label>
+                      <input
+                        id="contact-email"
+                        type="email"
+                        className="form-control"
+                        value={contactEmail}
+                        aria-invalid={Boolean(errors.contactEmail)}
+                        onChange={(e) => {
+                          setContactEmail(e.target.value);
+                          clearFieldError("contactEmail");
+                          markDirty();
+                        }}
+                      />
+                      {errors.contactEmail && (
+                        <p className="text-[0.75rem] text-danger mt-1 mb-0">
+                          {errors.contactEmail}
+                        </p>
+                      )}
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
                       <label className="form-label text-[0.75rem]">City</label>
                       <input
                         className="form-control"
@@ -617,7 +769,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         }}
                       />
                     </div>
-                    <div className="col-span-12 md:col-span-6">
+                    <div className="col-span-12 md:col-span-4">
                       <label className="form-label text-[0.75rem]">Country</label>
                       <input
                         className="form-control"
@@ -628,7 +780,45 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         }}
                       />
                     </div>
-                    <div className="col-span-12 md:col-span-6">
+                    {mode === "create" && (
+                      <div className="col-span-12 md:col-span-4">
+                        <label className="form-label text-[0.75rem]">Owner</label>
+                        <select
+                          className="form-select"
+                          value={assignedTo}
+                          onChange={(e) => {
+                            setAssignedTo(e.target.value);
+                            markDirty();
+                          }}
+                        >
+                          {assigneeOptions.map((a) => (
+                            <option key={a} value={a}>
+                              {a}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div className="col-span-12 md:col-span-4 hidden">
+                      <label className="form-label text-[0.75rem]">Department</label>
+                      <input
+                        className="form-control"
+                        value={contactDepartment}
+                        onChange={(e) => {
+                          setContactDepartment(e.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="lead-form-subgroup">
+                  <h6 className="text-[0.75rem] font-semibold text-textmuted uppercase tracking-wide mb-3">
+                    Tax
+                  </h6>
+                  <div className="grid grid-cols-12 gap-3">
+                    <div className="col-span-12 md:col-span-4">
                       <label className="form-label text-[0.75rem]">GSTIN</label>
                       <input
                         className="form-control"
@@ -639,7 +829,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         }}
                       />
                     </div>
-                    <div className="col-span-12 md:col-span-6">
+                    <div className="col-span-12 md:col-span-4">
                       <label className="form-label text-[0.75rem]">PAN</label>
                       <input
                         className="form-control"
@@ -650,34 +840,71 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         }}
                       />
                     </div>
-                    <div className="col-span-12 md:col-span-6">
-                      <label className="form-label text-[0.75rem]">Location</label>
-                      <input
-                        className="form-control"
-                        value={location}
+                  </div>
+                </div>
+
+                <div className="lead-form-subgroup">
+                  <h6 className="text-[0.75rem] font-semibold text-textmuted uppercase tracking-wide mb-3">
+                    Classification
+                  </h6>
+                  <div className="grid grid-cols-12 gap-3">
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Market tier</label>
+                      <select
+                        className="form-select"
+                        value={marketTier}
                         onChange={(e) => {
-                          setLocation(e.target.value);
+                          setMarketTier(e.target.value);
                           markDirty();
                         }}
-                      />
+                      >
+                        {MARKET_TIERS.map((t) => (
+                          <option key={t || "empty"} value={t}>
+                            {t || "—"}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <div className="col-span-12 md:col-span-6">
-                      <label className="form-label text-[0.75rem]">Website</label>
-                      <input
-                        className="form-control"
-                        value={website}
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Segment</label>
+                      <select
+                        className="form-select"
+                        value={segment}
                         onChange={(e) => {
-                          setWebsite(e.target.value);
+                          setSegment(e.target.value);
                           markDirty();
                         }}
-                      />
+                      >
+                        {LEAD_SEGMENTS.map((s) => (
+                          <option key={s || "empty"} value={s}>
+                            {s || "—"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Lead source</label>
+                      <select
+                        className="form-select"
+                        value={leadSource}
+                        onChange={(e) => {
+                          setLeadSource(e.target.value);
+                          markDirty();
+                        }}
+                      >
+                        {LEAD_SOURCES.map((s) => (
+                          <option key={s || "empty"} value={s}>
+                            {s || "—"}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </div>
 
                 <div className="lead-form-subgroup">
                   <h6 className="text-[0.75rem] font-semibold text-textmuted uppercase tracking-wide mb-3">
-                    Product
+                    Products
                   </h6>
                   <SaltMedicineFields
                     saltId={saltId}
@@ -690,20 +917,57 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                       markDirty();
                     }}
                     onMedicineChange={(id) => {
-                      setMedicineId(id);
+                      syncPrimaryMedicine(id);
                       clearFieldError("saltMedicine");
                       markDirty();
                     }}
                   />
+                  <div className="mt-3">
+                    <label className="form-label text-[0.75rem] mb-2">
+                      Product(s) of interest
+                    </label>
+                    {catalogueEmpty ? (
+                      <p className="text-[0.75rem] text-textmuted mb-0">
+                        Add medicines in Settings to select products.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {medicines.map((m) => {
+                          const checked = medicineIds.includes(m.id);
+                          return (
+                            <label
+                              key={m.id}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[0.8125rem] cursor-pointer transition-colors ${
+                                checked
+                                  ? "border-primary bg-primary/10 text-primary"
+                                  : "border-defaultborder dark:border-defaultborder/20 text-defaulttextcolor hover:border-primary/40"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="sr-only"
+                                checked={checked}
+                                onChange={() => {
+                                  toggleMedicineInterest(m.id);
+                                  markDirty();
+                                }}
+                              />
+                              {m.name}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="lead-form-subgroup">
                   <h6 className="text-[0.75rem] font-semibold text-textmuted uppercase tracking-wide mb-3">
-                    Pipeline
+                    Pipeline &amp; metrics
                   </h6>
                   <div className="grid grid-cols-12 gap-3">
                     <div className="col-span-12">
-                      <label className="form-label text-[0.75rem]">Lead title</label>
+                      <label className="form-label text-[0.75rem]">Lead title *</label>
                       <input
                         id="lead-title"
                         className="form-control"
@@ -722,8 +986,8 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         </p>
                       )}
                     </div>
-                    <div className="col-span-12 md:col-span-6">
-                      <label className="form-label text-[0.75rem]">Stage</label>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Pipeline stage</label>
                       <select
                         className="form-select"
                         value={stage}
@@ -739,28 +1003,84 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         ))}
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-6">
-                      <label className="form-label text-[0.75rem]">Assignee</label>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Priority</label>
                       <select
                         className="form-select"
-                        value={assignedTo}
+                        value={priority}
                         onChange={(e) => {
-                          setAssignedTo(e.target.value);
+                          setPriority(e.target.value);
                           markDirty();
                         }}
                       >
-                        {assigneeOptions.map((a) => (
-                          <option key={a} value={a}>
-                            {a}
+                        {LEAD_PRIORITIES.map((p) => (
+                          <option key={p || "empty"} value={p}>
+                            {p || "—"}
                           </option>
                         ))}
                       </select>
-                      <p className="text-[0.75rem] text-textmuted mb-0 mt-1">
-                        Your organization&apos;s sales team — not customer contacts.
-                      </p>
                     </div>
-                    <div className="col-span-12 md:col-span-6">
-                      <label className="form-label text-[0.75rem]">Follow-up date</label>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]" htmlFor="qual-score">
+                        Qual. score (0–{QUAL_SCORE_MAX})
+                      </label>
+                      <input
+                        id="qual-score"
+                        type="number"
+                        min={0}
+                        max={QUAL_SCORE_MAX}
+                        className="form-control"
+                        value={qualScore}
+                        onChange={(e) => {
+                          const raw = Number(e.target.value);
+                          const next = Number.isFinite(raw)
+                            ? Math.min(QUAL_SCORE_MAX, Math.max(0, raw))
+                            : 0;
+                          setQualScore(next);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Potential qty (kg/yr)</label>
+                      <input
+                        className="form-control"
+                        placeholder="e.g. 500"
+                        value={potentialQty}
+                        onChange={(e) => {
+                          setPotentialQty(e.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">
+                        Est. annual value (INR Lakh)
+                      </label>
+                      <input
+                        className="form-control"
+                        placeholder="e.g. 12.5"
+                        value={estAnnualValue}
+                        onChange={(e) => {
+                          setEstAnnualValue(e.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Last contact date</label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={lastContactDate}
+                        onChange={(e) => {
+                          setLastContactDate(e.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className="form-label text-[0.75rem]">Next follow-up date</label>
                       <input
                         type="date"
                         className="form-control"
@@ -771,20 +1091,53 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
                         }}
                       />
                     </div>
-                    <div className="col-span-12 md:col-span-6">
-                      <label className="form-label text-[0.75rem]">Lead score</label>
-                      <div className="py-2">
-                        <LeadScoreBadge
-                          score={
-                            mode === "create"
-                              ? DEFAULT_LEAD_SCORE
-                              : (lead?.leadScore ?? DEFAULT_LEAD_SCORE)
-                          }
-                        />
-                      </div>
+                    <div className="col-span-12 md:col-span-8">
+                      <label className="form-label text-[0.75rem]">Next action planned</label>
+                      <input
+                        className="form-control"
+                        value={nextAction}
+                        onChange={(e) => {
+                          setNextAction(e.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="lead-form-subgroup">
+                  <h6 className="text-[0.75rem] font-semibold text-textmuted uppercase tracking-wide mb-3">
+                    Notes
+                  </h6>
+                  <div className="grid grid-cols-12 gap-3">
+                    <div className="col-span-12">
+                      <label className="form-label text-[0.75rem]">
+                        Docs / info shared so far
+                      </label>
+                      <textarea
+                        className="form-control"
+                        rows={2}
+                        value={docsShared}
+                        onChange={(e) => {
+                          setDocsShared(e.target.value);
+                          markDirty();
+                        }}
+                      />
                     </div>
                     <div className="col-span-12">
-                      <label className="form-label text-[0.75rem]">Notes</label>
+                      <label className="form-label text-[0.75rem]">Last discussion summary</label>
+                      <textarea
+                        className="form-control"
+                        rows={3}
+                        value={lastDiscussionSummary}
+                        onChange={(e) => {
+                          setLastDiscussionSummary(e.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-12">
+                      <label className="form-label text-[0.75rem]">Remarks</label>
                       <textarea
                         className="form-control"
                         rows={3}
@@ -800,96 +1153,19 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
               </div>
             </div>
 
-            <div className="box custom-box mb-4">
-              <div className="box-header border-b border-defaultborder dark:border-defaultborder/10">
-                <h6 className="box-title mb-0 before:!hidden">Add contact (optional)</h6>
-              </div>
-              <div className="box-body grid grid-cols-12 gap-3">
-                <div className="col-span-12 md:col-span-4">
-                  <label className="form-label text-[0.75rem]">Name</label>
-                  <input
-                    className="form-control"
-                    value={contactName}
-                    onChange={(e) => {
-                      setContactName(e.target.value);
-                      markDirty();
-                    }}
-                  />
-                </div>
-                <div className="col-span-12 md:col-span-4">
-                  <label className="form-label text-[0.75rem]">Designation</label>
-                  <input
-                    className="form-control"
-                    value={contactRole}
-                    onChange={(e) => {
-                      setContactRole(e.target.value);
-                      markDirty();
-                    }}
-                  />
-                </div>
-                <div className="col-span-12 md:col-span-4">
-                  <label className="form-label text-[0.75rem]">Department</label>
-                  <input
-                    className="form-control"
-                    placeholder="Purchase / QA / R&D / Management"
-                    value={contactDepartment}
-                    onChange={(e) => {
-                      setContactDepartment(e.target.value);
-                      markDirty();
-                    }}
-                  />
-                </div>
-                <div className="col-span-12 md:col-span-6">
-                  <label className="form-label text-[0.75rem]">Phone / WhatsApp</label>
-                  <input
-                    className="form-control"
-                    value={contactPhone}
-                    onChange={(e) => {
-                      setContactPhone(e.target.value);
-                      markDirty();
-                    }}
-                  />
-                </div>
-                <div className="col-span-12 md:col-span-6">
-                  <label className="form-label text-[0.75rem]">Email</label>
-                  <input
-                    id="contact-email"
-                    type="email"
-                    className="form-control"
-                    value={contactEmail}
-                    aria-invalid={Boolean(errors.contactEmail)}
-                    onChange={(e) => {
-                      setContactEmail(e.target.value);
-                      clearFieldError("contactEmail");
-                      markDirty();
-                    }}
-                  />
-                  {errors.contactEmail && (
-                    <p className="text-[0.75rem] text-danger mt-1 mb-0">
-                      {errors.contactEmail}
-                    </p>
-                  )}
-                </div>
-                <div className="col-span-12">
-                  <label className="form-label text-[0.75rem]">Contact notes</label>
-                  <input
-                    className="form-control"
-                    value={contactNotes}
-                    onChange={(e) => {
-                      setContactNotes(e.target.value);
-                      markDirty();
-                    }}
-                  />
-                  <p className="text-[0.75rem] text-textmuted mb-0 mt-1">
-                    UI preview — not saved with the lead yet.
-                  </p>
-                </div>
-              </div>
-            </div>
-
             <FollowUpsSection />
-            <SamplesSection />
-            <QuotationsSection />
+            <SamplesSection
+              leadId={mode === "edit" ? leadId : ""}
+              pendingSamples={pendingSamples}
+              setPendingSamples={setPendingSamples}
+              defaultProductId={mode === "edit" ? lead?.medicineId : medicineId}
+            />
+            <QuotationsSection
+              leadId={mode === "edit" ? leadId : ""}
+              pendingQuotations={pendingQuotations}
+              setPendingQuotations={setPendingQuotations}
+              defaultProductId={mode === "edit" ? lead?.medicineId : medicineId}
+            />
           </div>
         </div>
 
@@ -935,7 +1211,7 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
             ) : mode === "create" ? (
               "Create lead"
             ) : (
-              "Save"
+              "Save changes"
             )}
           </button>
         </div>
@@ -947,12 +1223,34 @@ export default function LeadFormPage({ mode }: LeadFormPageProps) {
         companyName={companyName.trim()}
         matchedMedicine={selectedMedicine?.name ?? ""}
         onEditExisting={() => {
-          if (duplicateLead) router.push(leadEditHref(duplicateLead.id));
+          if (duplicateLead) {
+            router.push(
+              leadEditHref(duplicateLead.id, {
+                from: formSource,
+                saltId: returnSaltId,
+                medicineId: returnMedicineId,
+              })
+            );
+          }
           setDuplicateLead(null);
         }}
         onCreateDuplicate={() => void performSave()}
         onCancel={() => setDuplicateLead(null)}
       />
+
+      {saveSuccessLeadId && (
+        <LeadFormSuccessOverlay
+          open
+          mode={mode}
+          leadId={saveSuccessLeadId}
+          companyName={companyName.trim()}
+          medicineName={selectedMedicine?.name}
+          source={formSource}
+          saltId={returnSaltId ?? (saltId || undefined)}
+          medicineId={returnMedicineId ?? (medicineId || undefined)}
+          onDismiss={() => setSaveSuccessLeadId(null)}
+        />
+      )}
     </Fragment>
   );
 }

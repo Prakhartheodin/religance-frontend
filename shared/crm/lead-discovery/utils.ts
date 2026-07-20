@@ -64,6 +64,41 @@ export function filterDiscoveredCompanies(
   });
 }
 
+export type ResultsSortColumn = "company" | "type" | "location" | "score";
+export type ResultsSortDirection = "asc" | "desc";
+
+function compareStrings(
+  a: string,
+  b: string,
+  direction: ResultsSortDirection
+): number {
+  const cmp = a.localeCompare(b, undefined, { sensitivity: "base" });
+  return direction === "asc" ? cmp : -cmp;
+}
+
+export function sortDiscoveredCompanies(
+  companies: DiscoveredCompany[],
+  column: ResultsSortColumn,
+  direction: ResultsSortDirection
+): DiscoveredCompany[] {
+  const sorted = [...companies];
+  sorted.sort((a, b) => {
+    switch (column) {
+      case "company":
+        return compareStrings(a.companyName, b.companyName, direction);
+      case "type":
+        return compareStrings(a.companyType, b.companyType, direction);
+      case "location":
+        return compareStrings(a.location, b.location, direction);
+      case "score":
+        return direction === "asc"
+          ? a.leadScore - b.leadScore
+          : b.leadScore - a.leadScore;
+    }
+  });
+  return sorted;
+}
+
 export function collectFilterOptions(
   companies: DiscoveredCompany[]
 ): {

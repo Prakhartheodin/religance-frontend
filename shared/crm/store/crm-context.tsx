@@ -44,6 +44,8 @@ import type {
   CrmEmail,
   CrmEmailMeta,
   CrmLead,
+  CrmQuotation,
+  CrmSample,
   CrmState,
   CrmTimelineEvent,
   CreateLeadWithCompanyInput,
@@ -83,12 +85,15 @@ import { getBackendContacts, saveBackendContacts } from "./contacts-api";
 import { getBackendCompanies, saveBackendCompanies } from "./companies-api";
 import { getBackendEmailMeta, saveBackendEmailMeta } from "./emails-api";
 import { getBackendLeads, saveBackendLeads } from "./leads-api";
+import { getBackendSamples, saveBackendSamples } from "./samples-api";
+import { getBackendQuotations, saveBackendQuotations } from "./quotations-api";
 import { getBackendDeals, saveBackendDeals } from "./deals-api";
 import { getBackendTimeline, saveBackendTimeline } from "./timeline-api";
 import {
   getBackendEmailTemplates,
   saveBackendEmailTemplates,
 } from "./templates-api";
+import { nextQuoteNo } from "../quotations/quotation-form";
 import {
   INBOX_FOLDER_LABEL_IDS,
   type InboxFolderName,
@@ -165,6 +170,10 @@ type CrmContextValue = CrmState & {
     sourceLinks?: CrmLead["sourceLinks"];
   }) => string;
   updateLead: (leadId: string, patch: Partial<CrmLead>) => void;
+  deleteLead: (
+    leadId: string,
+    opts?: { samples?: boolean; quotations?: boolean; contact?: boolean }
+  ) => void;
   setLeadStage: (leadId: string, stage: LeadStage) => void;
   advanceLeadStage: (leadId: string) => void;
   verifyLead: (leadId: string) => void;
@@ -194,6 +203,31 @@ type CrmContextValue = CrmState & {
   getContact: (id: string) => CrmContact | undefined;
   deleteContact: (id: string) => void;
   getLead: (id: string) => CrmLead | undefined;
+  /** Record a sample against a lead; company + owner are copied from the lead. */
+  addSample: (
+    leadId: string,
+    input: Omit<
+      CrmSample,
+      "id" | "leadId" | "companyId" | "companyName" | "owner" | "createdAt"
+    >
+  ) => string;
+  updateSample: (id: string, patch: Partial<Omit<CrmSample, "id">>) => void;
+  deleteSample: (id: string) => void;
+  addQuotation: (
+    leadId: string,
+    input: Omit<
+      CrmQuotation,
+      | "id"
+      | "leadId"
+      | "companyId"
+      | "companyName"
+      | "owner"
+      | "quoteNo"
+      | "createdAt"
+    >
+  ) => string;
+  updateQuotation: (id: string, patch: Partial<Omit<CrmQuotation, "id">>) => void;
+  deleteQuotation: (id: string) => void;
   getLeadEmails: (leadId: string) => CrmEmail[];
   getLeadTimeline: (leadId: string) => CrmTimelineEvent[];
   findCompanyByDiscoveryId: (discoveryId: string) => CrmCompany | undefined;
@@ -208,7 +242,7 @@ type CrmContextValue = CrmState & {
   resetEmailTemplate: (id: string) => void;
   resetAllEmailTemplates: () => void;
   /** Shared catalogue: every edit is a per-item server call. */
-  refreshMasterData: () => Promise<void>;
+  refreshMasterData: () => Promise<boolean>;
   addSalt: () => Promise<string | null>;
   updateSalt: (
     id: string,
@@ -526,7 +560,14 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   // tab can't delete a record another tab created that it never loaded.
   const baseIdsRef = useRef<
     Record<
-      "companies" | "contacts" | "leads" | "deals" | "timeline" | "emailMeta",
+      | "companies"
+      | "contacts"
+      | "leads"
+      | "deals"
+      | "samples"
+      | "quotations"
+      | "timeline"
+      | "emailMeta",
       string[]
     >
   >({
@@ -534,6 +575,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     contacts: [],
     leads: [],
     deals: [],
+    samples: [],
+    quotations: [],
     timeline: [],
     emailMeta: [],
   });
@@ -600,6 +643,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         contacts: [],
         leads: [],
         deals: [],
+        samples: [],
+        quotations: [],
         timeline: [],
         emailMeta: [],
       };
@@ -623,13 +668,17 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   //
   // Exposed so an Excel import (which upserts the catalogue server-side) can pull
   // the fresh salts/medicines back without a page reload.
-  const refreshMasterData = useCallback(async () => {
-    if (!isAuthed()) return;
+  // Returns false when the pull didn't complete (not authed / any GET not live)
+  // so the caller can retry. A one-shot pull meant a single failed request left
+  // masterDataSynced false forever, which permanently disables the lead-form
+  // Save button with only a misleading "loading…" banner.
+  const refreshMasterData = useCallback(async (): Promise<boolean> => {
+    if (!isAuthed()) return false;
     const [saltsRes, medsRes] = await Promise.all([
       getBackendSalts(),
       getBackendMedicines(),
     ]);
-    if (!saltsRes.live || !medsRes.live) return;
+    if (!saltsRes.live || !medsRes.live) return false;
     setState((prev) => ({
       ...prev,
       salts: saltsRes.data,
@@ -637,12 +686,26 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     }));
     setMasterDataSynced(true);
     setMasterDataRevision((n) => n + 1);
+    return true;
   }, []);
 
   useEffect(() => {
     if (!hydrated || importedMasterLoadedRef.current) return;
     importedMasterLoadedRef.current = true;
-    void refreshMasterData();
+    let active = true;
+    let timer = 0;
+    const attempt = async () => {
+      const ok = await refreshMasterData();
+      if (ok || !active) return;
+      // ponytail: fixed 4s retry until the backend answers; add backoff if a
+      // down backend causes noticeable request spam.
+      timer = window.setTimeout(() => void attempt(), 4000);
+    };
+    void attempt();
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [hydrated, authUserId, refreshMasterData]);
 
   // Mongo is the source of truth for the CRM entities
@@ -653,18 +716,29 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     if (!hydrated || crmLoadedRef.current) return;
     crmLoadedRef.current = true;
     let active = true;
+    let timer = 0;
 
-    const syncCrm = async () => {
-      const [companiesRes, contactsRes, leadsRes, dealsRes, timelineRes, emailMetaRes] =
-        await Promise.all([
-          getBackendCompanies(),
-          getBackendContacts(),
-          getBackendLeads(),
-          getBackendDeals(),
-          getBackendTimeline(),
-          getBackendEmailMeta(),
-        ]);
-      if (!active) return;
+    const syncCrm = async (): Promise<boolean> => {
+      const [
+        companiesRes,
+        contactsRes,
+        leadsRes,
+        dealsRes,
+        samplesRes,
+        quotationsRes,
+        timelineRes,
+        emailMetaRes,
+      ] = await Promise.all([
+        getBackendCompanies(),
+        getBackendContacts(),
+        getBackendLeads(),
+        getBackendDeals(),
+        getBackendSamples(),
+        getBackendQuotations(),
+        getBackendTimeline(),
+        getBackendEmailMeta(),
+      ]);
+      if (!active) return true;
 
       // If ANY GET failed, do nothing at all: keep whatever is on screen, and
       // leave crmSyncedRef false so the debounced save effects stay disarmed.
@@ -675,14 +749,18 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         contactsRes.live &&
         leadsRes.live &&
         dealsRes.live &&
+        samplesRes.live &&
+        quotationsRes.live &&
         timelineRes.live &&
         emailMetaRes.live;
-      if (!allLive) return;
+      if (!allLive) return false;
 
       const companies = companiesRes.live ? companiesRes.data : [];
       const contacts = contactsRes.live ? contactsRes.data : [];
       const leads = leadsRes.live ? leadsRes.data : [];
       const deals = dealsRes.live ? dealsRes.data : [];
+      const samples = samplesRes.live ? samplesRes.data : [];
+      const quotations = quotationsRes.live ? quotationsRes.data : [];
       const timeline = timelineRes.live ? timelineRes.data : [];
       const emailMeta = emailMetaRes.live ? emailMetaRes.data : [];
 
@@ -700,6 +778,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         const mergedContacts = mergeById(contacts, prev.contacts);
         const mergedLeads = mergeById(leads, prev.leads);
         const mergedDeals = mergeById(deals, prev.deals);
+        const mergedSamples = mergeById(samples, prev.samples);
+        const mergedQuotations = mergeById(quotations, prev.quotations);
         const mergedTimeline = mergeById(timeline, prev.timeline);
 
         const reconciledMeta = reconcileEmailMetaAfterSync(
@@ -712,6 +792,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           contacts: mergedContacts.map((c) => c.id),
           leads: mergedLeads.map((l) => l.id),
           deals: mergedDeals.map((d) => d.id),
+          samples: mergedSamples.map((s) => s.id),
+          quotations: mergedQuotations.map((q) => q.id),
           timeline: mergedTimeline.map((t) => t.id),
           emailMeta: reconciledMeta.map((e) => e.id),
         };
@@ -721,6 +803,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           contacts: mergedContacts,
           leads: mergedLeads,
           deals: mergedDeals,
+          samples: mergedSamples,
+          quotations: mergedQuotations,
           timeline: mergedTimeline,
           emailMeta: reconciledMeta,
           emails: applyEmailMeta(prev.emails, reconciledMeta),
@@ -728,11 +812,20 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       });
       crmSyncedRef.current = true;
       setCrmSynced(true);
+      return true;
     };
 
-    void syncCrm();
+    const attempt = async () => {
+      const ok = await syncCrm();
+      if (ok || !active) return;
+      // ponytail: fixed 4s retry until every CRM GET is live; without this a
+      // single failed initial pull left Save permanently disabled.
+      timer = window.setTimeout(() => void attempt(), 4000);
+    };
+    void attempt();
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [hydrated, authUserId]);
 
@@ -832,6 +925,24 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!crmSyncedRef.current) return;
     const t = window.setTimeout(
+      () => void persist("samples", state.samples, saveBackendSamples),
+      800
+    );
+    return () => window.clearTimeout(t);
+  }, [state.samples, persist]);
+
+  useEffect(() => {
+    if (!crmSyncedRef.current) return;
+    const t = window.setTimeout(
+      () => void persist("quotations", state.quotations, saveBackendQuotations),
+      800
+    );
+    return () => window.clearTimeout(t);
+  }, [state.quotations, persist]);
+
+  useEffect(() => {
+    if (!crmSyncedRef.current) return;
+    const t = window.setTimeout(
       () => void persist("timeline", state.timeline, saveBackendTimeline),
       800
     );
@@ -855,6 +966,131 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     (discoveryId: string) =>
       state.companies.find((c) => c.discoveryCompanyId === discoveryId),
     [state.companies]
+  );
+
+  // Samples: company/owner are snapshotted from the linked lead, so callers only
+  // pass the sample's own fields plus the lead it belongs to.
+  const addSample = useCallback(
+    (
+      leadId: string,
+      input: Omit<
+        CrmSample,
+        "id" | "leadId" | "companyId" | "companyName" | "owner" | "createdAt"
+      >
+    ): string => {
+      const id = generateCrmId("sm");
+      patch((prev) => {
+        const lead = prev.leads.find((l) => l.id === leadId);
+        const sample: CrmSample = {
+          ...input,
+          id,
+          leadId,
+          companyId: lead?.companyId ?? "",
+          companyName: lead?.companyName ?? "",
+          owner: lead?.assignedTo ?? "",
+          createdAt: todayIso(),
+        };
+        return { ...prev, samples: [sample, ...prev.samples] };
+      });
+      return id;
+    },
+    [patch]
+  );
+
+  const updateSample = useCallback(
+    (id: string, samplePatch: Partial<Omit<CrmSample, "id">>) => {
+      patch((prev) => ({
+        ...prev,
+        samples: prev.samples.map((s) => {
+          if (s.id !== id) return s;
+          const next = { ...s, ...samplePatch };
+          // Re-pointed to another lead → re-derive company + owner snapshots.
+          if (samplePatch.leadId && samplePatch.leadId !== s.leadId) {
+            const lead = prev.leads.find((l) => l.id === samplePatch.leadId);
+            next.companyId = lead?.companyId ?? "";
+            next.companyName = lead?.companyName ?? "";
+            next.owner = lead?.assignedTo ?? "";
+          }
+          return next;
+        }),
+      }));
+    },
+    [patch]
+  );
+
+  const deleteSample = useCallback(
+    (id: string) => {
+      patch((prev) => ({
+        ...prev,
+        samples: prev.samples.filter((s) => s.id !== id),
+      }));
+    },
+    [patch]
+  );
+
+  const addQuotation = useCallback(
+    (
+      leadId: string,
+      input: Omit<
+        CrmQuotation,
+        | "id"
+        | "leadId"
+        | "companyId"
+        | "companyName"
+        | "owner"
+        | "quoteNo"
+        | "createdAt"
+      >
+    ): string => {
+      const id = generateCrmId("qt");
+      patch((prev) => {
+        const lead = prev.leads.find((l) => l.id === leadId);
+        const quoteNo = nextQuoteNo(prev.quotations);
+        const quotation: CrmQuotation = {
+          ...input,
+          id,
+          leadId,
+          companyId: lead?.companyId ?? "",
+          companyName: lead?.companyName ?? "",
+          owner: lead?.assignedTo ?? "",
+          quoteNo,
+          createdAt: todayIso(),
+        };
+        return { ...prev, quotations: [quotation, ...prev.quotations] };
+      });
+      return id;
+    },
+    [patch]
+  );
+
+  const updateQuotation = useCallback(
+    (id: string, quotationPatch: Partial<Omit<CrmQuotation, "id">>) => {
+      patch((prev) => ({
+        ...prev,
+        quotations: prev.quotations.map((q) => {
+          if (q.id !== id) return q;
+          const next = { ...q, ...quotationPatch };
+          if (quotationPatch.leadId && quotationPatch.leadId !== q.leadId) {
+            const lead = prev.leads.find((l) => l.id === quotationPatch.leadId);
+            next.companyId = lead?.companyId ?? "";
+            next.companyName = lead?.companyName ?? "";
+            next.owner = lead?.assignedTo ?? "";
+          }
+          return next;
+        }),
+      }));
+    },
+    [patch]
+  );
+
+  const deleteQuotation = useCallback(
+    (id: string) => {
+      patch((prev) => ({
+        ...prev,
+        quotations: prev.quotations.filter((q) => q.id !== id),
+      }));
+    },
+    [patch]
   );
 
   const saveFromDiscovery = useCallback(
@@ -1107,6 +1343,13 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           company.location ||
           [company.city, company.country].filter(Boolean).join(", ");
 
+        const medicineIds =
+          input.lead.medicineIds?.length
+            ? input.lead.medicineIds
+            : input.lead.medicineId
+              ? [input.lead.medicineId]
+              : [];
+
         const lead: CrmLead = {
           id: generateCrmId("lead"),
           title:
@@ -1122,12 +1365,24 @@ export function CrmProvider({ children }: { children: ReactNode }) {
           matchedMedicine: input.lead.matchedMedicine,
           saltId: input.lead.saltId,
           medicineId: input.lead.medicineId,
+          medicineIds,
           dosageForm: input.lead.dosageForm,
           location: leadLocation,
           stage: input.lead.stage ?? "Saved",
           leadScore: DEFAULT_LEAD_SCORE,
           assignedTo: input.lead.assignedTo ?? getUserDisplayName(),
+          marketTier: input.lead.marketTier ?? "",
+          segment: input.lead.segment ?? "",
+          leadSource: input.lead.leadSource ?? "",
+          priority: input.lead.priority ?? "",
+          qualScore: input.lead.qualScore ?? 0,
+          potentialQty: input.lead.potentialQty ?? "",
+          estAnnualValue: input.lead.estAnnualValue ?? "",
+          lastContactDate: input.lead.lastContactDate ?? "",
           followUpDate: input.lead.followUpDate ?? followUpInDays(7),
+          nextAction: input.lead.nextAction ?? "",
+          docsShared: input.lead.docsShared ?? "",
+          lastDiscussionSummary: input.lead.lastDiscussionSummary ?? "",
           lastActivity: todayIso(),
           notes: input.lead.notes ?? "",
           createdAt: todayIso(),
@@ -1348,6 +1603,38 @@ export function CrmProvider({ children }: { children: ReactNode }) {
             : l
         ),
       }));
+    },
+    [patch]
+  );
+
+  const deleteLead = useCallback(
+    (leadId: string, opts: { samples?: boolean; quotations?: boolean; contact?: boolean } = {}) => {
+      patch((prev) => {
+        const lead = prev.leads.find((l) => l.id === leadId);
+        const contactId = opts.contact ? lead?.contactId ?? null : null;
+        return {
+          ...prev,
+          leads: prev.leads
+            .filter((l) => l.id !== leadId)
+            // Other leads pointing at a contact we're deleting lose the link.
+            .map((l) =>
+              contactId && l.contactId === contactId
+                ? { ...l, contactId: null }
+                : l
+            ),
+          // Deals only exist because of their lead, so they always go with it.
+          deals: prev.deals.filter((d) => d.leadId !== leadId),
+          samples: opts.samples
+            ? prev.samples.filter((s) => s.leadId !== leadId)
+            : prev.samples,
+          quotations: opts.quotations
+            ? prev.quotations.filter((q) => q.leadId !== leadId)
+            : prev.quotations,
+          contacts: contactId
+            ? prev.contacts.filter((c) => c.id !== contactId)
+            : prev.contacts,
+        };
+      });
     },
     [patch]
   );
@@ -2381,16 +2668,39 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
   const deleteSalt = useCallback(
     async (id: string): Promise<boolean> => {
-      // The backend 409s if any medicine still points at this salt.
+      // Salt → medicine is a hard FK (the backend 409s while any medicine still
+      // points here), so detach first: unlink this salt from each linked
+      // medicine, and delete any medicine that would be left with no salt.
+      const linked = state.medicines.filter((m) => (m.saltIds ?? []).includes(id));
+      const deletedMedIds: string[] = [];
+      const relinked: { id: string; saltIds: string[] }[] = [];
+      for (const med of linked) {
+        const remaining = (med.saltIds ?? []).filter((s) => s !== id);
+        if (remaining.length === 0) {
+          const r = await removeBackendMedicine(med.id);
+          if (!r.live) return false;
+          deletedMedIds.push(med.id);
+        } else {
+          const r = await patchBackendMedicine(med.id, { saltIds: remaining });
+          if (!r.live) return false;
+          relinked.push({ id: med.id, saltIds: remaining });
+        }
+      }
       const res = await removeBackendSalt(id);
       if (!res.live) return false;
       patch((prev) => ({
         ...prev,
         salts: prev.salts.filter((s) => s.id !== id),
+        medicines: prev.medicines
+          .filter((m) => !deletedMedIds.includes(m.id))
+          .map((m) => {
+            const hit = relinked.find((r) => r.id === m.id);
+            return hit ? { ...m, saltIds: hit.saltIds } : m;
+          }),
       }));
       return true;
     },
-    [patch]
+    [patch, state.medicines]
   );
 
   const addMedicine = useCallback(
@@ -2449,12 +2759,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
   const deleteMedicine = useCallback(
     async (id: string): Promise<boolean> => {
-      // Local guard only — a medicine still named on a lead stays put. The lead
-      // link is by name, so the server cannot check this for us.
-      const med = state.medicines.find((m) => m.id === id);
-      if (med && state.leads.some((l) => l.matchedMedicine === med.name)) {
-        return false;
-      }
+      // Leads link medicines by name snapshot, so deleting one leaves the lead's
+      // matchedMedicine text intact — no orphan. The UI confirms before calling.
       const res = await removeBackendMedicine(id);
       if (!res.live) return false;
       patch((prev) => ({
@@ -2463,7 +2769,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       }));
       return true;
     },
-    [patch, state.medicines, state.leads]
+    [patch]
   );
 
   const value = useMemo<CrmContextValue>(
@@ -2481,6 +2787,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       updateLeadWithCompany,
       createLeadManual,
       updateLead,
+      deleteLead,
       deleteContact,
       setLeadStage,
       advanceLeadStage,
@@ -2503,6 +2810,12 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       getCompany: (id) => state.companies.find((c) => c.id === id),
       getContact: (id) => state.contacts.find((c) => c.id === id),
       getLead: (id) => state.leads.find((l) => l.id === id),
+      addSample,
+      updateSample,
+      deleteSample,
+      addQuotation,
+      updateQuotation,
+      deleteQuotation,
       getLeadEmails: (leadId) =>
         state.emails.filter((e) => e.leadId === leadId),
       getLeadTimeline: (leadId) =>
@@ -2549,6 +2862,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       updateLeadWithCompany,
       createLeadManual,
       updateLead,
+      deleteLead,
       deleteContact,
       setLeadStage,
       advanceLeadStage,
@@ -2568,6 +2882,12 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       inboxFolderHasMore,
       loadingMoreInboxFolder,
       loadMoreInboxEmails,
+      addSample,
+      updateSample,
+      deleteSample,
+      addQuotation,
+      updateQuotation,
+      deleteQuotation,
       findCompanyByDiscoveryId,
       updateEmailTemplate,
       replaceEmailTemplates,

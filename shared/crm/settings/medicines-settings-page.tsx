@@ -5,6 +5,7 @@ import {
   type DiscoveryMedicine,
 } from "@/shared/crm/store/medicines-master";
 import { useCrm } from "@/shared/crm/store/crm-context";
+import { ConfirmDeleteOverlay } from "@/shared/crm/ui/confirm-delete-overlay";
 import ExcelMenu from "@/shared/crm/settings/excel-menu";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
@@ -50,6 +51,8 @@ export default function MedicinesSettingsPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [savedFlash, setSavedFlash] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const saltNameById = useMemo(
     () => new Map(salts.map((s) => [s.id, s.name])),
@@ -138,9 +141,6 @@ export default function MedicinesSettingsPage() {
   }, [draft, savedMedicine]);
 
   const leadCount = draft ? (leadCountByMedicineName.get(draft.name) ?? 0) : 0;
-  const canDelete =
-    savedMedicine &&
-    (leadCountByMedicineName.get(savedMedicine.name) ?? 0) === 0;
 
   const handleSave = async () => {
     if (!draft || !isDirty) return;
@@ -169,17 +169,17 @@ export default function MedicinesSettingsPage() {
     setSearch("");
   };
 
-  const handleDelete = async () => {
+  const performDelete = async () => {
     if (!selectedId) return;
+    setDeleting(true);
     setDeleteError("");
     const ok = await deleteMedicine(selectedId);
+    setDeleting(false);
     if (!ok) {
-      setDeleteError(
-        leadCount > 0
-          ? "Cannot delete — active leads reference this medicine."
-          : "Could not delete this medicine."
-      );
+      setDeleteError("Could not delete this medicine. Check your connection.");
+      return;
     }
+    setConfirmingDelete(false);
   };
 
   if (!hydrated || !draft) {
@@ -405,11 +405,7 @@ export default function MedicinesSettingsPage() {
                     <button
                       type="button"
                       className="ti-btn ti-btn-danger !py-1.5 !px-3 !text-[0.8125rem] !w-auto !h-auto !mb-0"
-                      onClick={handleDelete}
-                      disabled={!canDelete}
-                      title={
-                        !canDelete ? "Remove linked leads before deleting" : undefined
-                      }
+                      onClick={() => setConfirmingDelete(true)}
                     >
                       Delete
                     </button>
@@ -512,6 +508,20 @@ export default function MedicinesSettingsPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDeleteOverlay
+        open={confirmingDelete}
+        title="Delete medicine?"
+        entityName={draft.name}
+        description={
+          leadCount > 0
+            ? `${leadCount} active lead${leadCount === 1 ? "" : "s"} reference this medicine. They keep the name but lose the link. This cannot be undone —`
+            : "This action cannot be undone —"
+        }
+        busy={deleting}
+        onConfirm={performDelete}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </Fragment>
   );
 }

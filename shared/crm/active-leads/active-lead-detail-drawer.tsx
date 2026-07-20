@@ -2,6 +2,7 @@
 
 import { companyInitials, leadEditHref } from "@/shared/crm/active-leads/active-leads-utils";
 import { FollowUpDateCell } from "@/shared/crm/active-leads/follow-up-date-cell";
+import { LeadDetailsDisplay } from "@/shared/crm/active-leads/lead-details-display";
 import { LeadStageProgress } from "@/shared/crm/active-leads/lead-stage-progress";
 import LeadStageBadge from "@/shared/crm/active-leads/lead-stage-badge";
 import { useCrm } from "@/shared/crm/store/crm-context";
@@ -89,6 +90,9 @@ export function ActiveLeadDetailDrawer({
   const {
     getLeadEmails,
     getLeadTimeline,
+    getCompany,
+    getContact,
+    medicines,
     deals,
   } = useCrm();
   const router = useRouter();
@@ -118,6 +122,8 @@ export function ActiveLeadDetailDrawer({
   const timeline = getLeadTimeline(lead.id);
   const emails = getLeadEmails(lead.id);
   const leadDeals = deals.filter((d) => d.leadId === lead.id);
+  const company = getCompany(lead.companyId);
+  const contact = lead.contactId ? getContact(lead.contactId) : undefined;
 
   const openEmailInInbox = (emailId: string) => {
     router.push(`/inbox?email=${encodeURIComponent(emailId)}`);
@@ -176,7 +182,7 @@ export function ActiveLeadDetailDrawer({
                 Quick view — edit on full page.
               </p>
               <Link
-                href={leadEditHref(lead.id)}
+                href={leadEditHref(lead.id, { from: "active-leads" })}
                 className="text-[0.75rem] text-primary inline-flex items-center gap-1 mb-2"
               >
                 <i className="ri-external-link-line"></i>
@@ -237,74 +243,18 @@ export function ActiveLeadDetailDrawer({
         <SimpleBar className="active-leads-drawer-scroll flex-1 min-h-0">
           <div className="active-leads-drawer-body">
           {activeTab === "overview" && (
-            <div className="py-4 space-y-3" role="tabpanel">
-              <InfoCard icon="ri-building-4-line" label="Company">
-                <p className="font-semibold text-[0.875rem] mb-0.5">
-                  {lead.companyName}
-                </p>
-                <p className="text-[0.8125rem] text-textmuted mb-2">
-                  <i className="ri-map-pin-line me-1"></i>
-                  {lead.location}
-                </p>
-                <Link
-                  href={`/active-leads?company=${lead.companyId}`}
-                  className="text-[0.75rem] text-primary"
-                >
-                  View company leads →
-                </Link>
-              </InfoCard>
-
-              <InfoCard icon="ri-user-3-line" label="Contact">
-                <p className="font-semibold text-[0.875rem] mb-0">
-                  {lead.contactName}
-                </p>
-                <p className="text-[0.75rem] text-textmuted mb-2">
-                  {lead.contactRole}
-                </p>
-                {lead.contactEmail && (
-                  <a
-                    href={`mailto:${lead.contactEmail}`}
-                    className="text-[0.8125rem] text-primary inline-flex items-center gap-1"
-                  >
-                    <i className="ri-mail-line"></i>
-                    {lead.contactEmail}
-                  </a>
-                )}
-              </InfoCard>
-
-              <InfoCard icon="ri-capsule-line" label="Product match">
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  <span className="badge bg-primary/10 text-primary">
-                    {lead.matchedSalt}
-                  </span>
-                  <span className="badge bg-light text-defaulttextcolor">
-                    {lead.dosageForm}
-                  </span>
-                </div>
-                <p className="text-[0.875rem] mb-0">{lead.matchedMedicine}</p>
-              </InfoCard>
-
-              {lead.sourceLinks.length > 0 && (
-                <InfoCard icon="ri-links-line" label="Source proof">
-                  <ul className="list-none mb-0 space-y-2 p-0">
-                    {lead.sourceLinks.map((link) => (
-                      <li key={link.url}>
-                        <a
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[0.8125rem] text-primary"
-                        >
-                          {link.label}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </InfoCard>
-              )}
+            <div className="py-4" role="tabpanel">
+              <LeadDetailsDisplay
+                lead={lead}
+                company={company}
+                contact={contact}
+                medicines={medicines}
+                showMeta
+                showCompanyLink
+              />
 
               {leadDeals.length > 0 && (
-                <InfoCard icon="ri-hand-coin-line" label="Deals">
+                <InfoCard icon="ri-hand-coin-line" label="Deals" >
                   {leadDeals.map((d) => (
                     <div key={d.id} className="text-[0.875rem] mb-1">
                       <strong>{d.title}</strong> — {d.value} ({d.stage})
@@ -312,23 +262,6 @@ export function ActiveLeadDetailDrawer({
                   ))}
                 </InfoCard>
               )}
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="active-leads-info-card !mb-0">
-                  <span className="text-[0.7rem] text-textmuted block">
-                    Last activity
-                  </span>
-                  <span className="text-[0.875rem] font-medium">
-                    {formatCrmDate(lead.lastActivity)}
-                  </span>
-                </div>
-                <div className="active-leads-info-card !mb-0">
-                  <span className="text-[0.7rem] text-textmuted block">Created</span>
-                  <span className="text-[0.875rem] font-medium">
-                    {formatCrmDate(lead.createdAt)}
-                  </span>
-                </div>
-              </div>
             </div>
           )}
 
@@ -453,7 +386,7 @@ export function ActiveLeadDetailDrawer({
                 {lead.notes || "No notes yet."}
               </p>
               <Link
-                href={leadEditHref(lead.id)}
+                href={leadEditHref(lead.id, { from: "active-leads" })}
                 className="ti-btn ti-btn-light active-leads-drawer-btn"
               >
                 Edit on full page
@@ -475,7 +408,7 @@ export function ActiveLeadDetailDrawer({
             </button>
           )}
           <Link
-            href={leadEditHref(lead.id)}
+            href={leadEditHref(lead.id, { from: "active-leads" })}
             className="ti-btn ti-btn-light"
           >
             Open full page

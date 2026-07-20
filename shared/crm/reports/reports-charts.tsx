@@ -2,7 +2,7 @@
 
 import type { ApexOptions } from "apexcharts";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import type {
   MetricCardData,
   ReportsSnapshot,
@@ -10,28 +10,10 @@ import type {
 
 const ApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
-function useChartContainerHeight(minHeight = 300) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState(minHeight);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    const updateHeight = () => {
-      const nextHeight = Math.max(minHeight, Math.floor(element.clientHeight));
-      setHeight((current) => (current === nextHeight ? current : nextHeight));
-    };
-
-    updateHeight();
-
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [minHeight]);
-
-  return { ref, height };
-}
+// ponytail: fixed chart height. Measuring the container's clientHeight and
+// feeding it back to ApexCharts caused an unbounded ResizeObserver growth loop
+// (SVG renders slightly taller than requested → container grows → repeat).
+// items-stretch/h-full already equalize column heights via CSS.
 
 function sparkOptions(color: string): ApexOptions {
   return {
@@ -188,7 +170,7 @@ export function LeadsSourceDonut({ report }: { report: ReportsSnapshot }) {
 
 export function RevenueAnalyticsChart({ report }: { report: ReportsSnapshot }) {
   const { categories, sales, revenue, profit } = report.revenueAnalytics;
-  const { ref, height } = useChartContainerHeight(350);
+  const height = 350;
 
   const options: ApexOptions = useMemo(
     () => ({
@@ -265,9 +247,8 @@ export function RevenueAnalyticsChart({ report }: { report: ReportsSnapshot }) {
 
   return (
     <div
-      ref={ref}
       id="crm-revenue-analytics"
-      className="w-full min-w-[280px] h-full min-h-[350px]"
+      className="w-full min-w-[280px] min-h-[350px]"
     >
       <ApexChart
         type="line"
@@ -344,7 +325,7 @@ export function ProfitEarnedChart({
 
 export function PipelineOverviewChart({ report }: { report: ReportsSnapshot }) {
   const { categories, newLeads, emailsSent, dealsWon } = report.pipelineOverview;
-  const { ref, height } = useChartContainerHeight(320);
+  const height = 320;
 
   const options: ApexOptions = useMemo(
     () => ({
@@ -407,9 +388,8 @@ export function PipelineOverviewChart({ report }: { report: ReportsSnapshot }) {
 
   return (
     <div
-      ref={ref}
       id="pipeline-overview"
-      className="w-full min-w-[280px] h-full min-h-[320px]"
+      className="w-full min-w-[280px] min-h-[320px]"
     >
       <ApexChart
         type="bar"
